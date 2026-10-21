@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -71,6 +73,16 @@ import de.loraki.app.ble.LinkState
 import de.loraki.app.data.ChatMessage
 import de.loraki.app.data.Status
 import de.loraki.core.Lkp
+import de.loraki.app.ui.components.AppCard
+import de.loraki.app.ui.components.DutyBar
+import de.loraki.app.ui.components.FragmentBar
+import de.loraki.app.ui.components.Mono
+import de.loraki.app.ui.components.Way
+import de.loraki.app.ui.components.WayBadge
+import de.loraki.app.ui.theme.LoraTheme
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -114,47 +126,46 @@ fun ChatScreen(vm: MainViewModel, onSettings: () -> Unit) {
         }
     }) {
         Scaffold(
+            containerColor = LoraTheme.colors.bg,
             topBar = {
-                TopAppBar(
-                    navigationIcon = { IconButton({ scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, "Unterhaltungen") } },
-                    title = {
-                        Column {
-                            Text(convs.firstOrNull { it.id == current }?.title ?: "LoRa-KI", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("Modell: ${currentModel ?: "Server-Standard"}" + (if (convs.firstOrNull { it.id == current }?.kb == true) " · Wissensbasis" else "") + " ▾", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary,
+                val cv = LoraTheme.colors
+                val self by vm.selfInfo.collectAsState()
+                val conv = convs.firstOrNull { it.id == current }
+                Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SquareButton({ scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, "Unterhaltungen", Modifier.size(20.dp)) }
+                        Column(Modifier.weight(1f)) {
+                            Text(conv?.title ?: "LoRa-KI", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = cv.ink)
+                            Mono((currentModel ?: "Server-Standard") + (if (conv?.kb == true) " · Wissensbasis an" else "") + " ▾",
                                 modifier = Modifier.clickable { modelDialog = true })
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(8.dp).background(
-                                    when (link) { LinkState.READY -> Color(0xFF2E7D32); LinkState.CONNECTING -> Color(0xFFF9A825); else -> Color(0xFFC62828) }, CircleShape))
-                                Text(when (link) { LinkState.READY -> "  verbunden"; LinkState.CONNECTING -> "  verbinde …"; else -> "  getrennt" },
-                                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
                         }
-                    },
-                    actions = {
-                        IconButton(onSettings) { Icon(Icons.Default.Settings, "Einstellungen") }
+                        SquareButton(onSettings) { Icon(Icons.Default.Settings, "Einstellungen", Modifier.size(20.dp)) }
                         Box {
-                            IconButton({ menu = true }) { Icon(Icons.Default.MoreVert, "Mehr") }
+                            SquareButton({ menu = true }) { Icon(Icons.Default.MoreVert, "Mehr", Modifier.size(20.dp)) }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem({ Text("KI-Modell wählen …") }, { menu = false; modelDialog = true })
-                                DropdownMenuItem({ Text("NOMAD-Wissensdatenbank: " + if (convs.firstOrNull { it.id == current }?.kb == true) "an ✓" else "aus") }, { menu = false; vm.toggleKnowledgeBase() })
+                                DropdownMenuItem({ Text("NOMAD-Wissensdatenbank: " + if (conv?.kb == true) "an ✓" else "aus") }, { menu = false; vm.toggleKnowledgeBase() })
                                 DropdownMenuItem({ Text("Kontext der KI zurücksetzen") }, { menu = false; vm.resetContext() })
                                 DropdownMenuItem({ Text("Unterhaltung löschen") }, { menu = false; confirmDelete = true })
                             }
                         }
-                    },
-                )
+                    }
+                    // Statusband: Node, Weg, Sendezeit
+                    AppCard(Modifier.padding(horizontal = 16.dp)) {
+                        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(Modifier.size(8.dp).clip(CircleShape).background(when (link) { LinkState.READY -> cv.accent; LinkState.CONNECTING -> cv.amber; else -> cv.danger }))
+                                Text(when (link) { LinkState.READY -> self?.name?.ifBlank { null } ?: "Node verbunden"; LinkState.CONNECTING -> "Node verbindet …"; else -> "Node getrennt" },
+                                    fontSize = 13.sp, fontWeight = FontWeight.Medium, color = cv.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                WayBadge(if (link == LinkState.READY) Way.LORA else Way.NONE)
+                            }
+                            radio?.let { r -> DutyBar(used, r.budgetS, r.duty * 100) }
+                        }
+                    }
+                }
             },
             bottomBar = {
                 Column(Modifier.navigationBarsPadding().imePadding()) {
-                    HorizontalDivider()
-                    radio?.let { r ->
-                        val frac = (used / r.budgetS).coerceIn(0.0, 1.0).toFloat()
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                            LinearProgressIndicator(progress = { frac }, modifier = Modifier.fillMaxWidth())
-                            Text("Sendezeit-Budget: %.0f / %.0f s pro Stunde (Duty-Cycle %.1f %%)".format(used, r.budgetS, r.duty * 100),
-                                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
                     pending.forEach { p ->
                         val est = vm.estimate(p.bytes.size)
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -164,9 +175,9 @@ fun ChatScreen(vm: MainViewModel, onSettings: () -> Unit) {
                             IconButton({ vm.removePending(p) }) { Icon(Icons.Default.Close, "Entfernen") }
                         }
                     }
-                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.Bottom) {
+                    Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Box {
-                            IconButton({ attachMenu = true }) { Icon(Icons.Default.AttachFile, "Anhang") }
+                            SquareButton({ attachMenu = true }, size = 48.dp) { Icon(Icons.Default.AttachFile, "Anhang", Modifier.size(22.dp)) }
                             DropdownMenu(attachMenu, { attachMenu = false }) {
                                 DropdownMenuItem({ Text("Foto / Bild") }, { attachMenu = false
                                     pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
@@ -175,10 +186,13 @@ fun ChatScreen(vm: MainViewModel, onSettings: () -> Unit) {
                                     leadingIcon = { Icon(Icons.Default.AttachFile, null) })
                             }
                         }
-                        OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text("Nachricht an die KI") }, maxLines = 5,
-                            shape = RoundedCornerShape(24.dp))
-                        IconButton({ vm.send(text); text = "" }, enabled = text.isNotBlank() || pending.isNotEmpty()) {
-                            Icon(Icons.AutoMirrored.Filled.Send, "Senden")
+                        OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text("Nachricht an die KI") }, maxLines = 5, shape = RoundedCornerShape(24.dp),
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(focusedBorderColor = LoraTheme.colors.accent, unfocusedBorderColor = LoraTheme.colors.lineStrong,
+                                focusedContainerColor = LoraTheme.colors.surface, unfocusedContainerColor = LoraTheme.colors.surface))
+                        val canSend = text.isNotBlank() || pending.isNotEmpty()
+                        Box(Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(if (canSend) LoraTheme.colors.accent else LoraTheme.colors.surface2)
+                            .clickable(enabled = canSend) { vm.send(text); text = "" }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.AutoMirrored.Filled.Send, "Senden", Modifier.size(22.dp), tint = if (canSend) LoraTheme.colors.accentInk else LoraTheme.colors.muted)
                         }
                     }
                 }
@@ -186,12 +200,16 @@ fun ChatScreen(vm: MainViewModel, onSettings: () -> Unit) {
         ) { pad ->
             if (messages.isEmpty()) {
                 Box(Modifier.fillMaxSize().padding(pad).padding(32.dp), contentAlignment = Alignment.Center) {
-                    Text("Stelle der KI eine Frage. Die Nachricht wird per LoRa-Funk an deinen Server gesendet – das dauert wegen der gesetzlichen Sendepausen einige Sekunden bis Minuten.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        de.loraki.app.ui.components.Contours(Modifier.fillMaxWidth().height(110.dp))
+                        Text("Stelle der KI eine Frage", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = LoraTheme.colors.ink)
+                        Text("Die Nachricht geht per LoRa-Funk an deinen Server. Wegen der gesetzlichen Sendepausen dauert das Sekunden bis Minuten – vor jedem Anhang siehst du die geschätzte Zeit.",
+                            color = LoraTheme.colors.muted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
                 }
             }
             LazyColumn(Modifier.fillMaxSize().padding(pad), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(messages, key = { it.id }) { m -> Bubble(m, vm) }
             }
         }
@@ -228,41 +246,67 @@ fun ChatScreen(vm: MainViewModel, onSettings: () -> Unit) {
 }
 
 @Composable
+private fun SquareButton(onClick: () -> Unit, size: androidx.compose.ui.unit.Dp = 44.dp, content: @Composable () -> Unit) {
+    val c = LoraTheme.colors
+    Box(Modifier.size(size).clip(RoundedCornerShape(14.dp)).background(c.surface).border(1.dp, c.line, RoundedCornerShape(14.dp)).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center) { androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides c.ink) { content() } }
+}
+
+@Composable
 private fun Bubble(m: ChatMessage, vm: MainViewModel) {
+    val c = LoraTheme.colors
     val mine = m.outgoing
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
-        Card(
-            Modifier.widthIn(max = 320.dp),
-            colors = CardDefaults.cardColors(containerColor = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant),
-            shape = RoundedCornerShape(16.dp),
-        ) {
-            Column(Modifier.padding(12.dp)) {
-                when (m.kind) {
-                    Lkp.KIND_IMAGE, Lkp.KIND_FILE -> Text((if (m.kind == Lkp.KIND_IMAGE) "🖼 " else "📎 ") + (m.fileName ?: "Datei") + "  (${"%.1f".format(m.size / 1024.0)} KB)")
-                    Lkp.KIND_RESET -> Text("↺ Kontext zurückgesetzt", fontSize = 13.sp)
-                    Lkp.KIND_SET_MODEL -> Text("Modell: " + m.text.ifEmpty { "Server-Standard" }, fontSize = 13.sp)
-                    Lkp.KIND_SET_OPTS -> Text("NOMAD-Wissensdatenbank: " + if (m.text.contains("kb=1")) "an" else "aus", fontSize = 13.sp)
-                    Lkp.KIND_MODEL_LIST_REQ -> Text(m.text, fontSize = 13.sp)
-                    else -> Text(if (mine) androidx.compose.ui.text.AnnotatedString(m.text) else markdown(m.text))
-                }
-                if (mine) StatusLine(m, vm)
-            }
+    val system = m.kind == Lkp.KIND_RESET || m.kind == Lkp.KIND_SET_MODEL || m.kind == Lkp.KIND_SET_OPTS || m.kind == Lkp.KIND_MODEL_LIST_REQ
+    if (system) {   // Steuernachrichten: leise Zeile statt Blase
+        val label = when (m.kind) {
+            Lkp.KIND_RESET -> "↺ Kontext zurückgesetzt"
+            Lkp.KIND_SET_MODEL -> "Modell: " + m.text.ifEmpty { "Server-Standard" }
+            Lkp.KIND_SET_OPTS -> if (m.text.contains("kb=")) "NOMAD-Wissensdatenbank: " + if (m.text.contains("kb=1")) "an" else "aus" else "Einstellung gesendet"
+            else -> m.text
         }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { Mono(label) }
+        return
+    }
+    val shape = if (mine) RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp) else RoundedCornerShape(18.dp, 18.dp, 18.dp, 6.dp)
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        val isFile = m.kind == Lkp.KIND_IMAGE || m.kind == Lkp.KIND_FILE
+        val body = if (!mine) m.text.substringBefore("\n\nQuellen: ") else m.text
+        val sources = if (!mine && m.text.contains("\n\nQuellen: ")) m.text.substringAfter("\n\nQuellen: ") else null
+        Box(Modifier.widthIn(max = 320.dp).clip(shape).then(if (mine) Modifier.background(c.accent) else Modifier.background(c.surface).border(1.dp, c.line, shape))
+            .padding(if (isFile) 10.dp else 14.dp, if (isFile) 10.dp else 12.dp)) {
+            if (isFile) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(c.accentInk.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+                    Icon(if (m.kind == Lkp.KIND_IMAGE) Icons.Default.Image else Icons.Default.AttachFile, null, tint = c.accentInk)
+                }
+                Column { Text(m.fileName ?: "Datei", color = c.accentInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Mono("%.1f KB".format(m.size / 1024.0), color = c.accentInk.copy(alpha = 0.9f)) }
+            } else Text(if (mine) androidx.compose.ui.text.AnnotatedString(body) else markdown(body), color = if (mine) c.accentInk else c.ink, fontSize = 15.sp, lineHeight = 22.sp)
+        }
+        sources?.let { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(Icons.Default.MenuBook, null, Modifier.size(14.dp), tint = LoraTheme.colors.muted); Mono("Quellen: $it", size = 11) } }
+        if (mine) StatusLine(m, vm)
     }
 }
 
 @Composable
 private fun StatusLine(m: ChatMessage, vm: MainViewModel) {
+    val c = LoraTheme.colors
     val label = when (m.status) {
         Status.QUEUED -> "wartet auf Verbindung/Sendefenster"
-        Status.SENDING -> if (m.total > 0) "sendet … ${m.acked}/${m.total} Fragmente" else "sendet …"
-        Status.DELIVERED -> "zugestellt"
-        Status.WAITING_AI -> "zugestellt – KI antwortet …"
+        Status.SENDING -> if (m.total > 0) "sendet · ${m.acked} / ${m.total} Pakete" else "sendet …"
+        Status.DELIVERED -> "zugestellt" + if (m.total > 0) " · ${m.total} Pakete" else ""
+        Status.WAITING_AI -> "zugestellt"
         Status.FAILED -> "fehlgeschlagen"
         Status.RECEIVED -> ""
     }
-    Text(label, fontSize = 11.sp, color = if (m.status == Status.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-    if (m.status == Status.SENDING && m.total > 0)
-        LinearProgressIndicator(progress = { m.acked.toFloat() / m.total }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
-    if (m.status == Status.FAILED) TextButton({ vm.retry(m.id) }) { Text("Erneut senden") }
+    Column(Modifier.widthIn(min = 120.dp, max = 300.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        if (m.status == Status.SENDING && m.total > 0) FragmentBar(m.acked, m.total, Modifier.fillMaxWidth())
+        Mono(label, color = if (m.status == Status.FAILED) c.danger else c.muted, size = 11)
+        if (m.status == Status.WAITING_AI) Row(Modifier.clip(androidx.compose.foundation.shape.CircleShape).background(c.surface).border(1.dp, c.line, androidx.compose.foundation.shape.CircleShape).padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf(1f, 0.6f, 0.3f).forEach { a -> Box(Modifier.size(6.dp).clip(androidx.compose.foundation.shape.CircleShape).background(c.accent.copy(alpha = a))) } }
+            Text("Server bearbeitet die Anfrage …", fontSize = 13.sp, color = c.muted)
+        }
+        if (m.status == Status.FAILED) TextButton({ vm.retry(m.id) }) { Text("Erneut senden") }
+    }
 }

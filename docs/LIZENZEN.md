@@ -16,3 +16,7 @@ Eigener Code dieses Repos: Lizenz noch festzulegen (Inhaber: Repo-Eigentümer).
 
 Der ZIM-Leser (`core/.../ZimFile.kt`) ist eine eigene Implementierung nach der OpenZIM-Spezifikation; weder libzim noch libkiwix
 (GPL) noch kiwix-js sind enthalten. Zur Validierung dient `libzim` nur als Testreferenz (`core/src/test/resources/zim-golden.json`).
+
+## Schriften
+
+- **IBM Plex Sans / IBM Plex Mono** – SIL Open Font License 1.1 (Lizenztext: `docs/OFL-IBM-Plex.txt`), als Ressourcen in der App gebündelt.

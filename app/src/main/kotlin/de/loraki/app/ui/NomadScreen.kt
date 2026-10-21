@@ -19,6 +19,17 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,7 +53,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
-import androidx.compose.material3.ScrollableTabRow
+import de.loraki.app.ui.components.AppCard
+import de.loraki.app.ui.components.Mono
+import de.loraki.app.ui.components.PillTabs
+import de.loraki.app.ui.components.SwitchRow
+import de.loraki.app.ui.components.Tag
+import de.loraki.app.ui.components.Way
+import de.loraki.app.ui.components.WayBadge
+import de.loraki.app.ui.theme.LoraTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -86,11 +104,13 @@ fun NomadScreen(vm: NomadViewModel, chat: de.loraki.app.nomad.NomadChatViewModel
     }
     if (tabs.none { it.first == tab }) tab = "web"
     Column(Modifier.fillMaxSize()) {
-        ScrollableTabRow(selectedTabIndex = tabs.indexOfFirst { it.first == tab }.coerceAtLeast(0), edgePadding = 0.dp) {
-            tabs.forEach { (id, t) -> Tab(tab == id, { tab = id }, text = { Text(t, maxLines = 1) }) }
-        }
         val mode by lookup.mode.collectAsState()
         LaunchedEffect(tab) { lookup.refreshMode() }
+        Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Nomad", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+            WayBadge(when (mode) { de.loraki.app.nomad.NomadMode.WLAN -> Way.WLAN; de.loraki.app.nomad.NomadMode.LORA -> Way.LORA; else -> Way.NONE })
+        }
+        PillTabs(tabs, tab, { tab = it }, Modifier.padding(bottom = 10.dp))
         when (tab) {
             "web" -> if (mode == de.loraki.app.nomad.NomadMode.WLAN) NomadWebTab(vm, onOpenLibrary = { tab = "server" })
                      else NeedsWlan("Die NOMAD-Oberfläche braucht das lokale WLAN (oder VPN). Ohne WLAN stehen KI, Wiki und Karte als gezielte Anfragen per LoRa zur Verfügung.", onSettings = { tab = "server" })
@@ -132,55 +152,53 @@ private fun LoraKiCard(onStart: () -> Unit) {
 
 @Composable
 private fun ServerTab(vm: NomadViewModel) {
+    val c = LoraTheme.colors
     val privacy by vm.privacy.collectAsState()
     val conn by vm.conn.collectAsState()
+    val compactText by vm.compactText.collectAsState()
+    val compactMap by vm.compactMap.collectAsState()
     var url by rememberSaveable { mutableStateOf(vm.settings.nomadUrl) }
     var token by rememberSaveable { mutableStateOf(vm.settings.nomadToken) }
     var confirmWipe by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Server (Gateway der Bridge)", style = MaterialTheme.typography.titleSmall)
-                OutlinedTextField(url, { url = it }, label = { Text("Adresse, z. B. http://192.168.1.10:8765") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(token, { token = it }, label = { Text("Token") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-                Button({ vm.saveServer(url, token); vm.test() }, enabled = url.isNotBlank() && token.isNotBlank()) { Text("Speichern & testen") }
-                conn?.let { Text(it, fontSize = 13.sp) }
-                Text("Im lokalen WLAN/VPN nutzt die App das Gateway (schnell, volle NOMAD-Oberfläche). Außerhalb läuft alles per LoRa als gezielte Anfrage.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val hasSecret = token.length >= 16
+    val fieldColors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(focusedBorderColor = c.accent, unfocusedBorderColor = c.lineStrong,
+        focusedContainerColor = c.surface, unfocusedContainerColor = c.surface)
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Server
+        AppCard { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Server (Gateway)", style = MaterialTheme.typography.titleSmall)
+            OutlinedTextField(url, { url = it }, label = { Text("Adresse, z. B. http://192.168.1.10:8765") }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
+            OutlinedTextField(token, { token = it }, label = { Text("Token (mind. 16 Zeichen)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
+            Button({ vm.saveServer(url, token); vm.test() }, enabled = url.isNotBlank() && token.isNotBlank(), shape = RoundedCornerShape(12.dp)) { Text("Speichern & testen") }
+            conn?.let { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val ok = it.startsWith("Verbunden")
+                Box(Modifier.size(8.dp).clip(CircleShape).background(if (ok) c.accent else c.muted)); Text(it, fontSize = 13.sp, color = if (ok) c.accent else c.muted, fontWeight = FontWeight.Medium) } }
+            Text("Im lokalen WLAN/VPN nutzt die App das Gateway (schnell, volle NOMAD-Oberfläche). Außerhalb läuft alles per LoRa als gezielte Anfrage.", fontSize = 12.sp, color = c.muted)
+        } }
+        // Privatsphäre
+        AppCard(accent = privacy) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(if (privacy) c.accent else c.surface2), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Lock, null, tint = if (privacy) c.accentInk else c.muted, modifier = Modifier.size(22.dp)) }
+                Column(Modifier.weight(1f)) { Text("Nichts auf dem Handy speichern", style = MaterialTheme.typography.titleSmall); Text(if (privacy) "Aktiv · Standard" else "Aus – Chats und Offline-Inhalte werden gespeichert", fontSize = 12.sp) }
+                Switch(privacy, { vm.setPrivacy(it) }, colors = androidx.compose.material3.SwitchDefaults.colors(checkedThumbColor = c.accentInk, checkedTrackColor = c.accent, uncheckedThumbColor = c.muted, uncheckedTrackColor = c.surface2, uncheckedBorderColor = c.lineStrong))
             }
-        }
-        val compactText by vm.compactText.collectAsState()
-        val compactMap by vm.compactMap.collectAsState()
-        val hasSecret = token.length >= 16
-        Card {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Kompaktmodus (experimentell)", style = MaterialTheme.typography.titleSmall)
-                Text("Öffentliche Antworten (Wikipedia, Karten) werden als unverschlüsselte Rohdatenpakete gesendet: weniger Overhead, rund 20 % weniger Funkzeit. " +
-                    "Sie sind durch eine Prüfsumme mit dem gemeinsamen Geheimnis (dein Token, mind. 16 Zeichen) vor Fälschung geschützt, aber mitlesbar. " +
-                    "Anfragen, KI-Chats und deine Position bleiben verschlüsselt. Braucht ein MeshCore-Firmware-Update mit Rohdaten-Unterstützung und einen direkten Pfad zum Server; " +
-                    "klappt es nicht, wechselt der Server automatisch auf den verschlüsselten Weg.", fontSize = 12.sp)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Wikipedia-Antworten kompakt", Modifier.weight(1f)); Switch(compactText && hasSecret, { vm.setCompactText(it) }, enabled = hasSecret)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { Text("Kartenausschnitte kompakt"); Text("Mithörende sehen, welche Gegend du abrufst", fontSize = 11.sp, color = MaterialTheme.colorScheme.error) }
-                    Switch(compactMap && hasSecret, { vm.setCompactMap(it) }, enabled = hasSecret)
-                }
-                if (!hasSecret) Text("Zuerst oben ein Token (mind. 16 Zeichen, gleich wie in der Bridge) eintragen.", fontSize = 11.sp)
-            }
-        }
-        Card {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { Text("Nichts auf dem Handy speichern", style = MaterialTheme.typography.titleSmall); Text(if (privacy) "Aktiv" else "Aus – Chats und Offline-Inhalte werden gespeichert", fontSize = 12.sp) }
-                    Switch(privacy, { vm.setPrivacy(it) })
-                }
-                Text("Aktiv: Chats, Anhänge, Wikipedia-Artikel und Kartenausschnitte liegen nur im Arbeitsspeicher und sind nach dem Beenden der App weg. " +
-                    "Es gibt keine Offline-Bibliothek; der Browser-Zwischenspeicher der NOMAD-Oberfläche wird gelöscht, Benachrichtigungen zeigen keinen Inhalt. " +
-                    "Gespeichert bleiben nur Verbindungseinstellungen und das Sendezeit-Protokoll (Zeitpunkte, kein Inhalt – das Gesetz verlangt, dass die Sendezeit auch nach einem Neustart eingehalten wird). " +
-                    "Hinweis: Der MeshCore-Node und der Server können Nachrichten ihrerseits speichern.", fontSize = 12.sp)
-                OutlinedButton({ confirmWipe = true }) { Text("Jetzt alles Lokale löschen") }
-            }
-        }
+            Text("Chats, Anhänge, Artikel und Karten liegen nur im Arbeitsspeicher und sind nach dem Beenden weg. Es gibt keine Offline-Bibliothek, der Browser-Zwischenspeicher wird gelöscht, Benachrichtigungen zeigen keinen Inhalt. " +
+                "Gespeichert bleiben nur Verbindungseinstellungen und das Sendezeit-Protokoll (Zeitpunkte, kein Inhalt – nötig, damit die gesetzlichen Sendepausen auch nach einem Neustart gelten). Node und Server können Nachrichten ihrerseits speichern.", fontSize = 13.sp, lineHeight = 19.sp)
+            OutlinedButton({ confirmWipe = true }, shape = RoundedCornerShape(12.dp), colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(containerColor = c.surface, contentColor = c.accent)) { Text("Jetzt alles Lokale löschen") }
+        } }
+        // Kompaktmodus
+        AppCard { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) { Text("Kompaktmodus", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f)); Tag("experimentell") }
+            Text("Öffentliche Antworten (Wikipedia, Karten) als unverschlüsselte, aber beglaubigte Rohdatenpakete: rund 20 % weniger Funkzeit. Anfragen, KI-Chats und deine Position bleiben verschlüsselt. " +
+                "Braucht MeshCore-Firmware mit Rohdaten-Unterstützung und einen direkten Pfad; sonst wechselt der Server automatisch auf den verschlüsselten Weg.", fontSize = 13.sp, lineHeight = 19.sp, color = c.muted)
+            SwitchRow("Wikipedia-Antworten", compactText && hasSecret, { vm.setCompactText(it) }, enabled = hasSecret)
+            SwitchRow("Kartenausschnitte", compactMap && hasSecret, { vm.setCompactMap(it) }, warning = "Mithörende sehen, welche Gegend du abrufst", enabled = hasSecret)
+            if (!hasSecret) Text("Zuerst oben ein Token (mind. 16 Zeichen, gleich wie in der Bridge) eintragen.", fontSize = 12.sp, color = c.muted)
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.surface2).padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.Lock, null, Modifier.size(14.dp), tint = c.muted); Mono("HMAC-geprüft · Fälschungen werden verworfen", size = 11) }
+        } }
+        Spacer(Modifier.height(8.dp))
     }
     if (confirmWipe) androidx.compose.material3.AlertDialog(
         onDismissRequest = { confirmWipe = false },

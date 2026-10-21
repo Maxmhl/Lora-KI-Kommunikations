@@ -1,6 +1,23 @@
 package de.loraki.app.ui
 
 import android.Manifest
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import de.loraki.app.ui.components.*
+import de.loraki.app.ui.theme.LoraTheme
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
@@ -67,19 +84,19 @@ private fun ModeBanner(vm: NomadLookupViewModel, busy: Boolean) {
     var elapsed by remember { mutableLongStateOf(0L) }
     LaunchedEffect(busy) { elapsed = 0; while (busy) { delay(1000); elapsed++ } }
     LaunchedEffect(Unit) { while (true) { vm.refreshMode(); delay(20_000) } }
-    Card(Modifier.fillMaxWidth().padding(8.dp), colors = CardDefaults.cardColors(containerColor = when (mode) {
-        NomadMode.WLAN -> MaterialTheme.colorScheme.primaryContainer
-        NomadMode.LORA -> MaterialTheme.colorScheme.tertiaryContainer
-        NomadMode.NONE -> MaterialTheme.colorScheme.errorContainer })) {
-        Column(Modifier.padding(10.dp)) {
-            Text(when (mode) {
-                NomadMode.WLAN -> "Lokales WLAN – schnell"
-                NomadMode.LORA -> "Per LoRa – langsam: Antworten brauchen je nach Größe Minuten (gesetzliche Sendepausen)"
-                NomadMode.NONE -> "Keine Verbindung – WLAN/VPN (Server in den Einstellungen) oder MeshCore-Node verbinden"
-            }, fontSize = 13.sp)
-            if (busy) {
-                Text((activity ?: "Wird abgerufen …") + if (mode == NomadMode.LORA) "  ·  Wartezeit %d:%02d".format(elapsed / 60, elapsed % 60) else "", fontSize = 12.sp)
-                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
+    val c = LoraTheme.colors
+    val text = when (mode) {
+        NomadMode.WLAN -> "Lokales WLAN – schnell"
+        NomadMode.LORA -> "Per LoRa – langsam: Antworten brauchen je nach Größe Minuten (gesetzliche Sendepausen)"
+        NomadMode.NONE -> "Keine Verbindung – WLAN/VPN (Server in den Einstellungen) oder MeshCore-Node verbinden"
+    }
+    if (!busy && mode != NomadMode.NONE) return
+    AppCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (!busy) Text(text, fontSize = 13.sp, color = c.danger) else {
+                Text(activity ?: "Wird abgerufen …", fontSize = 13.sp)
+                if (mode == NomadMode.LORA) Mono("Wartezeit %d:%02d".format(elapsed / 60, elapsed % 60))
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp), color = c.accent, trackColor = c.surface2)
             }
         }
     }
@@ -106,47 +123,66 @@ fun WikiRequestTab(vm: NomadLookupViewModel) {
 
     Column(Modifier.fillMaxSize()) {
         ModeBanner(vm, busy)
-        Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (books.isEmpty()) {
-                OutlinedButton({ vm.loadBooks() }, enabled = !busy && mode != NomadMode.NONE) { Text("Bibliotheken laden" + eta(vm.access.estimateSeconds(120))) }
-            } else Box {
-                OutlinedButton({ menu = true }) { Text(books.firstOrNull { it.id == book }?.title ?: "Bibliothek", maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                DropdownMenu(menu, { menu = false }) { books.forEach { b -> DropdownMenuItem({ Text("${b.title} (${b.lang})") }, { vm.book.value = b.id; menu = false }) } }
+        val c = LoraTheme.colors
+        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            AppCard(Modifier.fillMaxWidth()) {
+                if (books.isEmpty()) {
+                    Row(Modifier.fillMaxWidth().clickable(enabled = !busy && mode != NomadMode.NONE) { vm.loadBooks() }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.MenuBook, null, Modifier.size(18.dp), tint = c.accent); Spacer(Modifier.width(8.dp))
+                        Text("Bibliotheken laden", fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f)); Mono(eta(vm.access.estimateSeconds(120)).removePrefix(" · "), size = 11)
+                    }
+                } else Box {
+                    val cur = books.firstOrNull { it.id == book }
+                    Row(Modifier.fillMaxWidth().clickable { menu = true }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.MenuBook, null, Modifier.size(18.dp), tint = c.accent); Spacer(Modifier.width(8.dp))
+                        Text(cur?.title ?: "Bibliothek", fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                        cur?.let { Spacer(Modifier.width(6.dp)); Mono(it.lang, size = 12) }
+                    }
+                    DropdownMenu(menu, { menu = false }) { books.forEach { b -> DropdownMenuItem({ Text("${b.title} (${b.lang})") }, { vm.book.value = b.id; menu = false }) } }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(query, { query = it }, Modifier.weight(1f), placeholder = { Text("Suchbegriff") }, singleLine = true, shape = RoundedCornerShape(16.dp),
+                    leadingIcon = { Icon(Icons.Default.Search, null, Modifier.size(18.dp)) },
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = c.accent, unfocusedBorderColor = c.lineStrong, focusedContainerColor = c.surface, unfocusedContainerColor = c.surface))
+                EffortButton("Suchen", if (mode == NomadMode.LORA) vm.access.estimateSeconds(250)?.let { "≈ " + formatDuration(it) } else null, { vm.search(query) }, enabled = query.isNotBlank() && !busy && book != null)
             }
         }
-        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(query, { query = it }, Modifier.weight(1f), placeholder = { Text("Suchbegriff") }, singleLine = true)
-            Button({ vm.search(query) }, enabled = query.isNotBlank() && !busy && book != null) { Text("Suchen") }
-        }
-        if (mode == NomadMode.LORA && query.isNotBlank()) Text("Suche: Antwort ca. ${formatDuration(vm.access.estimateSeconds(250) ?: 0.0)}", fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp)) }
+        error?.let { Text(it, color = c.danger, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
 
         val a = article
         if (a != null) {
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton({ vm.article.value = null }) { Text("← Treffer") }
-                    Text(a.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (hits.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    Text("Treffer:", fontSize = 12.sp, color = c.muted)
+                    hits.forEach { h -> PillChip(h.title, h.title == a.title, { vm.openArticle(h) }, mono = false, enabled = !busy) }
                 }
-                Text(markdown(a.text))
-                Text(if (a.summary) "KI-Kurzfassung" else "${a.text.length} von ${a.total} Zeichen", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+                AppCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(a.title, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+                    Text(markdown(a.text), fontSize = 16.sp, lineHeight = 25.sp)
+                } }
+                if (!a.summary) {
+                    LinearProgressIndicator(progress = { (a.text.length.toFloat() / a.total.coerceAtLeast(1)).coerceIn(0f, 1f) }, Modifier.fillMaxWidth().height(6.dp).clip(CircleShape), color = c.accent, trackColor = c.surface2)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Mono("${a.text.length} von ${a.total} Zeichen"); Mono("Quelle: Wikipedia · CC BY-SA") }
+                } else Mono("KI-Kurzfassung")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!a.summary && a.text.length < a.total)
-                        OutlinedButton({ vm.moreOfArticle() }, enabled = !busy) { Text("Mehr lesen" + eta(vm.access.estimateSeconds(NomadRequest.approxArticleBytes(1500)))) }
-                    if (!a.summary) OutlinedButton({ vm.summarize() }, enabled = !busy) { Text("Kurzfassung (KI)" + eta(vm.access.estimateSeconds(450))) }
+                        EffortButton("Mehr lesen", vm.access.estimateSeconds(NomadRequest.approxArticleBytes(1500))?.let { "≈ " + formatDuration(it) }, { vm.moreOfArticle() }, Modifier.weight(1f), enabled = !busy)
+                    if (!a.summary) EffortButton("Kurzfassung (KI)", vm.access.estimateSeconds(450)?.let { "≈ " + formatDuration(it) }, { vm.summarize() }, Modifier.weight(1f), enabled = !busy, primary = false)
                 }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Lock, null, Modifier.size(14.dp), tint = c.muted); Text("Nur im Arbeitsspeicher – beim Beenden der App weg", fontSize = 12.sp, color = c.muted) }
+                TextButton({ vm.article.value = null }) { Text("← Alle Treffer", color = c.accent) }
             }
         } else {
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 hits.forEach { h ->
-                    Text(h.title, Modifier.fillMaxWidth().clickable(enabled = !busy) { vm.openArticle(h) }.padding(horizontal = 16.dp, vertical = 12.dp))
-                    HorizontalDivider()
+                    AppCard(Modifier.fillMaxWidth().clickable(enabled = !busy) { vm.openArticle(h) }) { Text(h.title, Modifier.padding(horizontal = 14.dp, vertical = 12.dp), fontSize = 15.sp, fontWeight = FontWeight.Medium) }
                 }
                 if (hits.isNotEmpty() && mode == NomadMode.LORA)
                     Text("Beim Öffnen werden zuerst die ersten ca. ${vm.firstChunk()} Zeichen geladen (${formatDuration(vm.access.estimateSeconds(NomadRequest.approxArticleBytes(vm.firstChunk())) ?: 0.0)}); der Rest auf Wunsch.",
-                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp))
-                if (hits.isEmpty() && !busy) Text("Nichts wird auf dem Handy gespeichert: Du fragst gezielt einen Eintrag an, der Server schickt nur diesen.",
-                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+                        fontSize = 12.sp, color = c.muted)
+                if (hits.isEmpty() && !busy) Text("Nichts wird auf dem Handy gespeichert: Du fragst gezielt einen Eintrag an, der Server schickt nur diesen.", fontSize = 13.sp, color = c.muted)
             }
         }
     }
@@ -184,9 +220,7 @@ fun MapRequestTab(vm: NomadLookupViewModel) {
     val error by vm.error.collectAsState()
     var manualLat by rememberSaveable { mutableStateOf("") }
     var manualLon by rememberSaveable { mutableStateOf("") }
-    var qMenu by remember { mutableStateOf(false) }
-    var rMenu by remember { mutableStateOf(false) }
-    var locating by remember { mutableStateOf(false) }
+        var locating by remember { mutableStateOf(false) }
 
     fun fromPhone() {
         locating = true
@@ -215,10 +249,10 @@ fun MapRequestTab(vm: NomadLookupViewModel) {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ModeBanner(vm, busy)
-        Column(Modifier.padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("1 · Position", style = MaterialTheme.typography.titleSmall)
+        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionLabel("1 · Position")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                PositionSource.entries.forEach { s -> androidx.compose.material3.FilterChip(source == s, { vm.setSource(s) }, label = { Text(s.label) }) }
+                PositionSource.entries.forEach { s -> PillChip(s.label, source == s, { vm.setSource(s) }, mono = false) }
             }
             if (source == PositionSource.MANUAL) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(manualLat, { manualLat = it }, Modifier.weight(1f), label = { Text("Breite") }, singleLine = true)
@@ -228,30 +262,24 @@ fun MapRequestTab(vm: NomadLookupViewModel) {
                 OutlinedButton({ fetchPosition() }, enabled = !busy && !locating) { Text(if (locating) "Suche …" else if (source == PositionSource.MANUAL) "Übernehmen" else "Position holen") }
                 Text(position?.let { "%.5f, %.5f (%s)".format(java.util.Locale.ROOT, it.lat, it.lon, it.source.label) } ?: "noch keine Position", fontSize = 12.sp)
             }
-            if (source == PositionSource.NODE) Text("Nutzt die vom Node gemeldete Position (GPS am Node muss aktiv sein und einen Fix haben).", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (source == PositionSource.NODE) Text("Nutzt die vom Node gemeldete Position (GPS am Node muss aktiv sein und einen Fix haben).", fontSize = 10.sp, color = LoraTheme.colors.muted)
 
-            Text("2 · Radius und Detailgrad", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
+            SectionLabel("2 · Radius und Detailgrad", Modifier.padding(top = 4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box {
-                    OutlinedButton({ rMenu = true }) { Text("Radius: ${radius.label}") }
-                    DropdownMenu(rMenu, { rMenu = false }) { NomadRequest.MapRadius.entries.forEach { r -> DropdownMenuItem({ Text(r.label) }, { vm.setRadius(r); rMenu = false }) } }
-                }
-                Box {
-                    OutlinedButton({ qMenu = true }) { Text(quality.label) }
-                    DropdownMenu(qMenu, { qMenu = false }) {
-                        NomadRequest.MapQuality.entries.forEach { q -> DropdownMenuItem({ Text("${q.label} · ca. ${q.approxBytes / 1000.0} KB" + eta(vm.access.estimateSeconds(q.approxBytes, map = true))) }, { vm.setQuality(q); qMenu = false }) }
-                    }
-                }
+                NomadRequest.MapRadius.entries.forEach { r -> PillChip(r.label, radius == r, { vm.setRadius(r) }) }
             }
-            Button({ position?.let { vm.requestMap(it.lat, it.lon) } }, enabled = !busy && mode != NomadMode.NONE && position != null, modifier = Modifier.fillMaxWidth()) {
-                Text("Karte um meine Position anfordern" + eta(vm.access.estimateSeconds(quality.approxBytes + 280, map = true)))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                NomadRequest.MapQuality.entries.forEach { q -> PillChip(q.label, quality == q, { vm.setQuality(q) }, mono = false) }
             }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+            val mapEta = vm.access.estimateSeconds(quality.approxBytes + 280, map = true)
+            EffortButton("Karte um meine Position anfordern", mapEta?.let { "≈ " + formatDuration(it) } ?: "ca. ${quality.approxBytes / 1000.0} KB", { position?.let { vm.requestMap(it.lat, it.lon) } },
+                Modifier.fillMaxWidth(), enabled = !busy && mode != NomadMode.NONE && position != null)
+            error?.let { Text(it, color = LoraTheme.colors.danger, fontSize = 12.sp) }
         }
 
         map?.let { m ->
             Column(Modifier.padding(8.dp)) {
-                Text("3 · Ort antippen für eine Detailkarte", style = MaterialTheme.typography.titleSmall)
+                SectionLabel("3 · Ort antippen für eine Detailkarte")
                 var imgSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
                 Box(Modifier.fillMaxWidth().aspectRatio(1f).onSizeChanged { imgSize = it }.pointerInput(m) {
                     detectTapGestures { off -> if (imgSize.width > 0) { val (la, lo) = m.section.toLatLon(off.x / imgSize.width.toDouble(), off.y / imgSize.height.toDouble()); vm.selectTarget(la, lo) } }
@@ -275,7 +303,7 @@ fun MapRequestTab(vm: NomadLookupViewModel) {
                 if (m.section.places.isNotEmpty()) {
                     Text("Orte in diesem Ausschnitt", fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        m.section.places.forEach { p -> androidx.compose.material3.AssistChip({ vm.detailAt(p.lat, p.lon) }, label = { Text(p.name) }, enabled = !busy) }
+                        m.section.places.forEach { p -> SoftChip(p.name, { vm.detailAt(p.lat, p.lon) }, enabled = !busy) }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
@@ -289,7 +317,7 @@ fun MapRequestTab(vm: NomadLookupViewModel) {
                 if (canBack) OutlinedButton({ vm.back() }, enabled = !busy) { Text("← Vorherige Karte") }
                 Text("Radius ${m.request.radius.label} · 1 Pixel ≈ ${m.section.metersPerPixel} m · Region ${m.section.region}", fontSize = 11.sp)
                 Text("Mitte %.5f, %.5f".format(java.util.Locale.ROOT, m.request.lat, m.request.lon) + target?.let { "  ·  Ziel %.5f, %.5f".format(java.util.Locale.ROOT, it.first, it.second) }.orEmpty(), fontSize = 11.sp)
-                Text("© OpenStreetMap-Mitwirkende, Protomaps (ODbL)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("© OpenStreetMap-Mitwirkende, Protomaps (ODbL)", fontSize = 10.sp, color = LoraTheme.colors.muted)
             }
         }
 
@@ -301,9 +329,9 @@ fun MapRequestTab(vm: NomadLookupViewModel) {
                     vm.setSource(PositionSource.MANUAL)
                 }.padding(vertical = 8.dp), fontSize = 13.sp)
             }
-            if (regions.isNotEmpty()) Text("Antippen übernimmt die Mitte der Region als manuelle Position.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (regions.isNotEmpty()) Text("Antippen übernimmt die Mitte der Region als manuelle Position.", fontSize = 10.sp, color = LoraTheme.colors.muted)
             if (map == null && !busy) Text("Deine Position geht (verschlüsselt) an den Server, der zeichnet sie in die Karte ein und schickt nur dieses kleine Bild zurück. Es wird nichts gespeichert.",
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                fontSize = 12.sp, color = LoraTheme.colors.muted, modifier = Modifier.padding(top = 8.dp))
         }
     }
 }
