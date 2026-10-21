@@ -1,0 +1,32 @@
+# Kopieren nach config.toml und anpassen.
+state_file = "limiter-state.json"   # speichert verbrauchte Airtime über Neustarts
+
+[serial]
+port = "/dev/ttyUSB0"               # Heltec V3 (Companion-Firmware, USB)
+baud = 115200
+
+[radio]
+# Werte werden vom Node gelesen; hier nur eintragen, wenn sie überschrieben werden sollen.
+# freq_mhz = 869.618
+# bw_khz = 62.5
+# sf = 8
+# cr = 8
+margin = 0.8                        # nutzt nur 80 % des erlaubten Duty-Cycle (Reserve für Adverts/ACKs)
+ack_timeout_s = 90
+
+[llm]
+base_url = "http://127.0.0.1:11434"
+model = "llama3.1"
+# vision_model = "llava"            # später aktivieren für Bilder
+num_predict = 400                   # Antwortlänge begrenzen: jedes Zeichen kostet Funkzeit
+history_turns = 6
+
+[limits]
+max_object_bytes = 200000
+max_context_chars = 12000
+
+[access]
+# Public-Key-Präfix (hex, mind. 12 Zeichen) der freigegebenen Handy-Nodes.
+# Unbekannte Absender werden im Log mit ihrem Präfix gemeldet.
+allowed_peers = []
+allow_all = false

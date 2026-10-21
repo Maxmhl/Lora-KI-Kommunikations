@@ -1,0 +1,26 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r bridge/requirements-dev.txt
+      - run: python protocol/gen_vectors.py && git diff --exit-code protocol/test-vectors.json
+      - run: cd bridge && python -m pytest -q
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :core:test :app:lintDebug :app:assembleDebug
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk

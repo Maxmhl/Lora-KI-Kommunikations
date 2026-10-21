@@ -1,0 +1,14 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+__pycache__/
+.pytest_cache/
+bridge/config.toml
+bridge/limiter-state.json
+*.apk
+*.aab
