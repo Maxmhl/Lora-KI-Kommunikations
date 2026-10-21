@@ -91,5 +91,15 @@ class VectorTest {
         assertEquals(c.getInt("fragment_bytes"), Lkp.FRAGMENT_BYTES)
         assertEquals(c.getInt("body_chars"), Lkp.BODY_CHARS)
         assertEquals(c.getInt("window"), Lkp.WINDOW)
+        val k = c.getJSONObject("kinds")
+        assertEquals(k.getInt("text"), Lkp.KIND_TEXT)
+        assertEquals(k.getInt("image"), Lkp.KIND_IMAGE)
+        assertEquals(k.getInt("file"), Lkp.KIND_FILE)
+        assertEquals(k.getInt("reply"), Lkp.KIND_REPLY)
+        assertEquals(k.getInt("status"), Lkp.KIND_STATUS)
+        assertEquals(k.getInt("reset"), Lkp.KIND_RESET)
+        assertEquals(k.getInt("model_list_req"), Lkp.KIND_MODEL_LIST_REQ)
+        assertEquals(k.getInt("model_list"), Lkp.KIND_MODEL_LIST)
+        assertEquals(k.getInt("set_model"), Lkp.KIND_SET_MODEL)
     }
 }

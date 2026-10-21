@@ -23,5 +23,7 @@ class Settings(ctx: Context) {
 
     var currentConv: Int get() = p.getInt("conv", 0); set(v) = p.edit { putInt("conv", v) }
     var limiterJson: String? get() = p.getString("limiter", null); set(v) = p.edit { putString("limiter", v) }
+    /** Zuletzt vom Server geladene Modellliste (Zeilen "name\tflags"). */
+    var modelsRaw: String get() = p.getString("models", "") ?: ""; set(v) = p.edit { putString("models", v) }
     var wantConnected: Boolean get() = p.getBoolean("want", false); set(v) = p.edit { putBoolean("want", v) }
 }

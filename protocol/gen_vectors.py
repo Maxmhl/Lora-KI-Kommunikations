@@ -42,7 +42,11 @@ v = {
     "packet_bytes": [[n, mesh_packet_bytes(n)] for n in (0, 11, 12, 140)],
     "subbands": [[f, *subband_limits(f)] for f in (865.5, 868.1, 868.9, 869.3, 869.618, 869.8, 915.0)],
     "constants": {"fragment_bytes": codec.FRAGMENT_BYTES, "body_chars": codec.BODY_CHARS,
-                  "window": codec.WINDOW, "max_missing": codec.MAX_MISSING},
+                  "window": codec.WINDOW, "max_missing": codec.MAX_MISSING,
+                  "kinds": {"text": codec.KIND_TEXT, "image": codec.KIND_IMAGE, "file": codec.KIND_FILE,
+                            "reply": codec.KIND_REPLY, "status": codec.KIND_STATUS, "reset": codec.KIND_RESET,
+                            "model_list_req": codec.KIND_MODEL_LIST_REQ, "model_list": codec.KIND_MODEL_LIST,
+                            "set_model": codec.KIND_SET_MODEL}},
 }
 out = Path(__file__).with_name("test-vectors.json")
 out.write_text(json.dumps(v, indent=1, ensure_ascii=False) + "\n")

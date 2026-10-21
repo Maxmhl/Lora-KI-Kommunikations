@@ -187,6 +187,17 @@
   "fragment_bytes": 99,
   "body_chars": 132,
   "window": 6,
-  "max_missing": 12
+  "max_missing": 12,
+  "kinds": {
+   "text": 1,
+   "image": 2,
+   "file": 3,
+   "reply": 4,
+   "status": 5,
+   "reset": 6,
+   "model_list_req": 7,
+   "model_list": 8,
+   "set_model": 9
+  }
  }
 }

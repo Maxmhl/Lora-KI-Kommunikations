@@ -32,6 +32,9 @@ KIND_FILE = 3
 KIND_REPLY = 4
 KIND_STATUS = 5
 KIND_RESET = 6
+KIND_MODEL_LIST_REQ = 7  # App -> Server: verfügbare Modelle anfordern (leere Nutzlast)
+KIND_MODEL_LIST = 8  # Server -> App: Zeilen 'name\tflags' (flags: v = Bildverständnis)
+KIND_SET_MODEL = 9  # App -> Server: Modellname für diese conv (leer = Server-Standard)
 
 FLAG_ZLIB = 0x01
 MAX_INFLATED = 8 * 1024 * 1024

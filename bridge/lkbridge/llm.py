@@ -22,6 +22,31 @@ class OllamaClient:
         with urllib.request.urlopen(req, timeout=self.timeout_s) as r:
             return json.load(r)["message"]["content"].strip()
 
+    def _get_json(self, path: str, body: dict | None = None) -> dict:
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(self.base_url + path, data, {"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.load(r)
+
+    def _list_sync(self) -> list[tuple[str, bool]]:
+        out = []
+        for m in self._get_json("/api/tags").get("models", []):
+            name = m.get("name") or m.get("model")
+            if not name:
+                continue
+            vision = False
+            try:  # neuere Ollama-Versionen melden Fähigkeiten
+                caps = self._get_json("/api/show", {"model": name}).get("capabilities", [])
+                vision = "vision" in caps
+            except Exception:
+                pass
+            out.append((name, vision))
+        return out
+
+    async def list_models(self) -> list[tuple[str, bool]]:
+        """[(Name, kann Bilder)] der auf dem Ollama-Server installierten Modelle."""
+        return await asyncio.to_thread(self._list_sync)
+
     async def chat(self, messages: list[dict], model: str | None = None,
                    images: list[bytes] | None = None) -> str:
         msgs = [dict(m) for m in messages]

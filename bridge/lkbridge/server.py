@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from pathlib import Path
 import random
 import time
 
@@ -30,12 +32,45 @@ class Bridge:
         self.system = lcfg.get("system_prompt", DEFAULT_SYSTEM)
         self.history_turns = int(lcfg.get("history_turns", 6))
         self.vision_model = lcfg.get("vision_model") or None
+        self.allowed_models = lcfg.get("models") or []  # leer = alle von Ollama gemeldeten
+        self.default_model = lcfg.get("model")
+        self._models_file = Path(cfg.get("model_state_file", "models-state.json"))
+        self.conv_models: dict[str, str] = self._load_models()
+        self._model_cache: tuple[float, list[tuple[str, bool]]] | None = None
         self.max_ctx_chars = int(cfg.get("limits", {}).get("max_context_chars", 12000))
         self.history: dict[tuple[str, int], list[dict]] = {}
         self.staged: dict[tuple[str, int], list[tuple[int, str, str, bytes, float]]] = {}
         self.jobs: asyncio.Queue = asyncio.Queue()
         self._ids: dict[str, int] = {}
         self._worker: asyncio.Task | None = None
+
+    # ------------------------------------------------------------ Modelle
+    def _load_models(self) -> dict[str, str]:
+        try:
+            return json.loads(self._models_file.read_text())
+        except (OSError, ValueError):
+            return {}
+
+    def _save_models(self) -> None:
+        try:
+            self._models_file.write_text(json.dumps(self.conv_models))
+        except OSError as e:
+            log.warning("Modellauswahl nicht speicherbar: %s", e)
+
+    async def available_models(self) -> list[tuple[str, bool]]:
+        now = time.time()
+        if self._model_cache and now - self._model_cache[0] < 60:
+            return self._model_cache[1]
+        found = await self.llm.list_models()
+        if self.allowed_models:
+            known = dict(found)
+            found = [(m, known.get(m, False)) for m in self.allowed_models]
+        self._model_cache = (now, found)
+        return found
+
+    @staticmethod
+    def _mkey(peer: str, conv: int) -> str:
+        return f"{peer}|{conv}"
 
     # ------------------------------------------------------------ Eingang
     def start(self) -> None:
@@ -53,7 +88,7 @@ class Bridge:
             return
         f = codec.parse_frame(text)
         if f is None:  # normale Klartextnachricht eines beliebigen MeshCore-Clients
-            await self.jobs.put((peer, 0, text.strip(), []))
+            await self.jobs.put(("chat", peer, 0, text.strip(), []))
             return
         if f.type in (codec.T_ACK, codec.T_ABORT):
             self.sender.on_ack(peer, f)
@@ -79,7 +114,7 @@ class Bridge:
         key = (peer, env.conv)
         if env.kind == codec.KIND_TEXT:
             atts = self.staged.pop(key, [])
-            await self.jobs.put((peer, env.conv, env.payload.decode("utf-8", "replace"), atts))
+            await self.jobs.put(("chat", peer, env.conv, env.payload.decode("utf-8", "replace"), atts))
         elif env.kind in (codec.KIND_IMAGE, codec.KIND_FILE):
             try:
                 name, mime, data = codec.unpack_file(env.payload)
@@ -89,6 +124,10 @@ class Bridge:
             lst = self.staged.setdefault(key, [])
             lst[:] = [a for a in lst if time.time() - a[4] < 3600][-4:]
             lst.append((env.kind, name, mime, data, time.time()))
+        elif env.kind == codec.KIND_MODEL_LIST_REQ:
+            await self.jobs.put(("models", peer, env.conv))
+        elif env.kind == codec.KIND_SET_MODEL:
+            await self.jobs.put(("setmodel", peer, env.conv, env.payload.decode("utf-8", "replace").strip()))
         elif env.kind == codec.KIND_RESET:
             self.history.pop(key, None)
             self.staged.pop(key, None)
@@ -96,24 +135,39 @@ class Bridge:
     # ------------------------------------------------------------ Verarbeitung
     async def _work(self) -> None:
         while True:
-            peer, conv, text, atts = await self.jobs.get()
+            job = await self.jobs.get()
+            kind, peer, conv = job[0], job[1], job[2]
             try:
-                answer = await self._answer(peer, conv, text, atts)
+                if kind == "chat":
+                    answer = await self._answer(peer, conv, job[3], job[4])
+                    await self._reply(peer, conv, codec.KIND_REPLY, answer)
+                elif kind == "models":
+                    lines = "\n".join(f"{n}\t{'v' if v else ''}" for n, v in await self.available_models())
+                    await self._reply(peer, conv, codec.KIND_MODEL_LIST, lines)
+                elif kind == "setmodel":
+                    await self._set_model(peer, conv, job[3])
             except Exception as e:
-                log.exception("LLM-Fehler")
-                answer = f"Fehler auf dem Server: {e}"
-                await self._reply(peer, conv, codec.KIND_STATUS, answer)
-                continue
-            await self._reply(peer, conv, codec.KIND_REPLY, answer)
+                log.exception("Fehler bei %s", kind)
+                await self._reply(peer, conv, codec.KIND_STATUS, f"Fehler auf dem Server: {e}")
+
+    async def _set_model(self, peer: str, conv: int, name: str) -> None:
+        key = self._mkey(peer, conv)
+        if not name:
+            self.conv_models.pop(key, None)
+            self._save_models()
+            return
+        if name not in dict(await self.available_models()):
+            await self._reply(peer, conv, codec.KIND_STATUS, f"Unbekanntes Modell: {name}")
+            return
+        self.conv_models[key] = name
+        self._save_models()
+        log.info("Modell für %s: %s", key, name)
 
     async def _answer(self, peer: str, conv: int, text: str, atts) -> str:
         notes, images, blocks = [], [], []
         for kind, name, mime, data, _ in atts:
             if kind == codec.KIND_IMAGE:
-                if self.vision_model:
-                    images.append(files.to_jpeg(data))
-                else:
-                    notes.append(f"[Bild '{name}' ignoriert: kein Vision-Modell konfiguriert]")
+                images.append(files.to_jpeg(data))  # ob ein Modell Bilder versteht, wird unten entschieden
             else:
                 try:
                     blocks.append(f"[Datei: {name}]\n{files.extract_text(name, mime, data)}")
@@ -127,8 +181,15 @@ class Bridge:
         hist = self.history.setdefault(key, [])
         msgs = [{"role": "system", "content": self.system}, *hist[-2 * self.history_turns:],
                 {"role": "user", "content": prompt}]
-        answer = await self.llm.chat(msgs, model=self.vision_model if images else None,
-                                     images=images or None)
+        chosen = self.conv_models.get(self._mkey(peer, conv)) or self.default_model
+        model = chosen
+        if images:
+            vision_ok = dict(await self.available_models()).get(chosen, False)
+            model = chosen if vision_ok else self.vision_model
+            if model is None:
+                images = []
+                notes.append(f"[Bild ignoriert: Modell '{chosen}' versteht keine Bilder und es ist kein vision_model konfiguriert]")
+        answer = await self.llm.chat(msgs, model=model, images=images or None)
         hist += [{"role": "user", "content": prompt}, {"role": "assistant", "content": answer}]
         del hist[: -2 * self.history_turns]
         return ("\n".join(notes) + "\n" + answer).strip() if notes else answer

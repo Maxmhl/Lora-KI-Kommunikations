@@ -23,8 +23,12 @@ class Graph(val ctx: Context) {
     val session = MeshSession(ctx, scope)
     val engine = Engine(ctx, scope, store, settings, session)
 
-    fun hasBlePermission() = android.os.Build.VERSION.SDK_INT < 31 ||
-        ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+    private fun granted(p: String) = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
+
+    /** Android 12+: BLUETOOTH_SCAN + BLUETOOTH_CONNECT; davor: Standort (für BLE-Suche nötig). */
+    fun hasBlePermission() =
+        if (android.os.Build.VERSION.SDK_INT >= 31) granted(Manifest.permission.BLUETOOTH_CONNECT) && granted(Manifest.permission.BLUETOOTH_SCAN)
+        else granted(Manifest.permission.ACCESS_FINE_LOCATION)
 
     fun connect() {
         val addr = settings.deviceAddress ?: return

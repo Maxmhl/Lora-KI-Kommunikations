@@ -56,6 +56,12 @@ class Engine(
 
     private val _radioInfo = MutableStateFlow<RadioInfo?>(null)
     val radioInfo: StateFlow<RadioInfo?> = _radioInfo
+    data class ModelInfo(val name: String, val vision: Boolean)
+    private fun parseModels(raw: String) = raw.lines().filter { it.isNotBlank() }.map {
+        val p = it.split('\t'); ModelInfo(p[0], p.getOrNull(1)?.contains('v') == true)
+    }
+    /** Vom Server gemeldete Modelle (leer, bis die Liste einmal angefordert wurde). */
+    val models = MutableStateFlow(parseModels(settings.modelsRaw))
     private val _usedS = MutableStateFlow(0.0)
     /** Verbrauchte Airtime im gleitenden 1-h-Fenster (Sekunden). */
     val usedS: StateFlow<Double> = _usedS
@@ -143,6 +149,19 @@ class Engine(
         store.add(m); outbox.trySend(m.id)
     }
 
+    /** Fordert die Modellliste beim Server an (kostet etwas Sendezeit). */
+    fun requestModels(conv: Int) {
+        val m = ChatMessage(conv = conv, outgoing = true, kind = Lkp.KIND_MODEL_LIST_REQ, text = "Modellliste angefordert", status = Status.QUEUED)
+        store.add(m); outbox.trySend(m.id)
+    }
+
+    /** Wählt das Modell für eine Unterhaltung (null = Server-Standard) und teilt es dem Server mit. */
+    fun selectModel(conv: Int, model: String?) {
+        store.setModel(conv, model)
+        val m = ChatMessage(conv = conv, outgoing = true, kind = Lkp.KIND_SET_MODEL, text = model ?: "", status = Status.QUEUED)
+        store.add(m); outbox.trySend(m.id)
+    }
+
     fun resetConversation(conv: Int) {
         val m = ChatMessage(conv = conv, outgoing = true, kind = Lkp.KIND_RESET, text = "Kontext zurücksetzen", status = Status.QUEUED)
         store.add(m); outbox.trySend(m.id)
@@ -173,7 +192,8 @@ class Engine(
         val snd = sender ?: error("Funk nicht konfiguriert")
         val peer = settings.serverKeyHex?.take(12) ?: error("Kein Server-Kontakt gewählt")
         val payload = when (m0.kind) {
-            Lkp.KIND_TEXT, Lkp.KIND_RESET -> m0.text.toByteArray()
+            Lkp.KIND_TEXT, Lkp.KIND_RESET, Lkp.KIND_SET_MODEL -> m0.text.toByteArray()
+            Lkp.KIND_MODEL_LIST_REQ -> ByteArray(0)
             else -> Lkp.packFile(m0.fileName ?: "datei", m0.mime ?: "application/octet-stream", File(m0.filePath!!).readBytes())
         }
         val env = Lkp.buildEnvelope(m0.kind, m0.conv, payload)
@@ -213,7 +233,15 @@ class Engine(
 
     private fun onEnvelope(raw: ByteArray) {
         val env = try { Lkp.parseEnvelope(raw) } catch (e: Lkp.ProtocolException) { return }
-        if (env.kind == Lkp.KIND_REPLY || env.kind == Lkp.KIND_STATUS) addIncoming(env.conv, env.kind, String(env.payload))
+        when (env.kind) {
+            Lkp.KIND_REPLY, Lkp.KIND_STATUS -> addIncoming(env.conv, env.kind, String(env.payload))
+            Lkp.KIND_MODEL_LIST -> {
+                val raw = String(env.payload)
+                settings.modelsRaw = raw
+                models.value = parseModels(raw)
+                store.updateWhere({ it.kind == Lkp.KIND_MODEL_LIST_REQ && it.status == Status.DELIVERED }) { it.copy(text = "Modellliste erhalten (${models.value.size})") }
+            }
+        }
     }
 
     private fun addIncoming(conv: Int, kind: Int, text: String) {

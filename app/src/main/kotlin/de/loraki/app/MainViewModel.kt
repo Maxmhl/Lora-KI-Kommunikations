@@ -33,6 +33,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val radioInfo = engine.radioInfo
     val usedS = engine.usedS
     val conversations: StateFlow<List<Conversation>> = g.store.conversations
+    val models = engine.models
 
     private val _conv = MutableStateFlow(settings.currentConv)
     val currentConv: StateFlow<Int> = _conv
@@ -41,6 +42,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val pending = MutableStateFlow<List<Prepared>>(emptyList())
     val toast = MutableStateFlow<String?>(null)
+    val bleLog = de.loraki.app.ble.BleLog.lines
+    fun clearLog() = de.loraki.app.ble.BleLog.clear()
 
     val found = MutableStateFlow<List<FoundDevice>>(emptyList())
     val scanning = MutableStateFlow(false)
@@ -54,6 +57,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         selectConversation(g.store.conversations.value.first().id)
     }
     fun resetContext() = engine.resetConversation(_conv.value)
+    fun requestModels() = engine.requestModels(_conv.value)
+    fun selectModel(name: String?) = engine.selectModel(_conv.value, name)
 
     fun send(text: String) {
         val conv = _conv.value
@@ -88,7 +93,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         scanning.value = true
         scanJob = viewModelScope.launch {
             try {
-                session.ble.scan().collect { d -> found.value = (found.value.filter { it.address != d.address } + d).sortedByDescending { it.rssi } }
+                session.ble.scan().collect { d -> found.value = (found.value.filter { it.address != d.address } + d).sortedWith(compareByDescending<FoundDevice> { it.likely }.thenByDescending { it.rssi }) }
             } catch (e: Exception) { toast.value = e.message } finally { scanning.value = false }
         }
     }

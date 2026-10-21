@@ -49,6 +49,7 @@ cd bridge && python -m pytest          # Protokoll, Limiter, Übertragung mit Pa
 ## Grenzen / Hinweise
 * Durchsatz ist physikalisch gering (siehe `docs/RECHT.md`): ein 10-KB-Bild braucht bei 10 % Duty-Cycle ~15–20 min, bei 1 % ~3 h.
   Bilder werden deshalb auf ≤ 384 px skaliert (WebP), Dateien sind standardmäßig auf 60 KB begrenzt (einstellbar).
+* **Modellwahl:** In der App oben („Modell: … ▾“) pro Unterhaltung wählbar; die Liste holt die App einmalig vom Server (Ollama `/api/tags`).
 * Antworten der KI kommen als fertiger, komprimierter Block (kein Token-Streaming); die Bridge bittet das Modell um kurze Antworten.
 * Die Companion-Frame-Layouts (`core/.../Companion.kt`) basieren auf der Referenzbibliothek `meshcore_py` und sind
   gegen die eigene Firmware-Version zu verifizieren. Die BLE-Anbindung wurde **nicht auf echter Hardware** getestet.

@@ -46,13 +46,18 @@ class MeshSession(ctx: Context, private val scope: CoroutineScope) {
         try {
             ble.connect(address)
             startReader()
-            val si = request(Companion.appStart()) as? Incoming.SelfInfo ?: throw IOException("Node antwortet nicht auf App-Start")
+            BleLog.log("Sende App-Start")
+            val si = try { request(Companion.appStart()) } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                throw IOException("Node antwortet nicht auf App-Start – läuft die MeshCore-Companion-Firmware (BLE)? Ist die MeshCore-App/ein anderes Gerät verbunden?")
+            } as? Incoming.SelfInfo ?: throw IOException("Unerwartete Antwort auf App-Start")
+            BleLog.log("Node: ${si.name}, %.3f MHz SF${si.radio.sf}".format(si.radio.freqMhz))
             selfInfo.value = si
             refreshContacts()
             _state.value = LinkState.READY
             scope.launch { fetchMessages() }
         } catch (e: Exception) {
             lastError.value = e.message
+            BleLog.log("FEHLER: ${e.message}")
             disconnect()
             throw e
         }

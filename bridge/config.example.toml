@@ -1,5 +1,6 @@
 # Kopieren nach config.toml und anpassen.
 state_file = "limiter-state.json"   # speichert verbrauchte Airtime über Neustarts
+model_state_file = "models-state.json"  # merkt sich die in der App gewählten Modelle
 
 [serial]
 port = "/dev/ttyUSB0"               # Heltec V3 (Companion-Firmware, USB)
@@ -16,7 +17,8 @@ ack_timeout_s = 90
 
 [llm]
 base_url = "http://127.0.0.1:11434"
-model = "llama3.1"
+model = "llama3.1"                 # Standardmodell (in der App überschreibbar)
+# models = ["llama3.1", "qwen2.5", "llava"]   # optional: nur diese in der App anbieten (leer = alle von Ollama)
 # vision_model = "llava"            # später aktivieren für Bilder
 num_predict = 400                   # Antwortlänge begrenzen: jedes Zeichen kostet Funkzeit
 history_turns = 6

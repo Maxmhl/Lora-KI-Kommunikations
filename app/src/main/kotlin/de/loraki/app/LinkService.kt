@@ -20,9 +20,16 @@ class LinkService : Service() {
             .setOngoing(true)
             .setContentIntent(open)
             .build()
-        if (android.os.Build.VERSION.SDK_INT >= 29)
-            startForeground(2, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-        else startForeground(2, n)
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 29)
+                startForeground(2, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            else startForeground(2, n)
+        } catch (e: Exception) {
+            // Darf die Verbindung nicht verhindern: ohne Vordergrunddienst läuft sie nur, solange die App offen ist.
+            de.loraki.app.ble.BleLog.log("Vordergrunddienst nicht startbar: ${e.message}")
+            stopSelf()
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 }

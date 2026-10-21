@@ -27,13 +27,15 @@ data class ChatMessage(
     val ts: Long = System.currentTimeMillis(),
 )
 
-data class Conversation(val id: Int, val title: String, val created: Long = System.currentTimeMillis())
+data class Conversation(val id: Int, val title: String, val created: Long = System.currentTimeMillis(), val model: String? = null)
 
 /** Einfacher JSON-Speicher (Unterhaltungen + Nachrichten). */
 class Store(ctx: Context) {
     private val file = File(ctx.filesDir, "store.json")
     val attachmentDir = File(ctx.filesDir, "att").apply { mkdirs() }
 
+    /** Nächste Unterhaltungs-ID; wird nie sofort wiederverwendet, damit alte Server-Einstellungen (Modell, Verlauf) nicht in neue Chats geraten. */
+    private var nextConvId = 1
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     private val _convs = MutableStateFlow<List<Conversation>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages
@@ -45,8 +47,9 @@ class Store(ctx: Context) {
         if (!file.exists()) { _convs.value = listOf(Conversation(0, "Unterhaltung 1")); return }
         try {
             val o = JSONObject(file.readText())
+            nextConvId = o.optInt("next", 1)
             _convs.value = o.getJSONArray("convs").let { a ->
-                (0 until a.length()).map { a.getJSONObject(it).let { c -> Conversation(c.getInt("id"), c.getString("title"), c.getLong("created")) } }
+                (0 until a.length()).map { a.getJSONObject(it).let { c -> Conversation(c.getInt("id"), c.getString("title"), c.getLong("created"), c.optString("model").ifEmpty { null }) } }
             }
             _messages.value = o.getJSONArray("msgs").let { a ->
                 (0 until a.length()).map { a.getJSONObject(it).toMsg() }
@@ -58,7 +61,8 @@ class Store(ctx: Context) {
 
     @Synchronized private fun save() {
         val o = JSONObject()
-        o.put("convs", JSONArray(_convs.value.map { JSONObject().put("id", it.id).put("title", it.title).put("created", it.created) }))
+        o.put("next", nextConvId)
+        o.put("convs", JSONArray(_convs.value.map { JSONObject().put("id", it.id).put("title", it.title).put("created", it.created).put("model", it.model) }))
         o.put("msgs", JSONArray(_messages.value.map { it.toJson() }))
         val tmp = File(file.parentFile, "store.json.tmp")
         tmp.writeText(o.toString())
@@ -80,10 +84,15 @@ class Store(ctx: Context) {
     fun get(id: String): ChatMessage? = _messages.value.firstOrNull { it.id == id }
 
     @Synchronized fun newConversation(): Conversation {
-        val id = (0..255).first { n -> _convs.value.none { it.id == n } }
+        val id = (0..255).map { (nextConvId + it) % 256 }.first { n -> _convs.value.none { it.id == n } }
+        nextConvId = (id + 1) % 256
         val c = Conversation(id, "Unterhaltung ${_convs.value.size + 1}")
         _convs.value = _convs.value + c; save()
         return c
+    }
+
+    @Synchronized fun setModel(conv: Int, model: String?) {
+        _convs.value = _convs.value.map { if (it.id == conv) it.copy(model = model) else it }; save()
     }
 
     @Synchronized fun deleteConversation(id: Int) {

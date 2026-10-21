@@ -74,8 +74,12 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
         else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
     }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
-        if (r.values.all { it } || vm.hasBlePermission()) vm.startScan()
+        if (vm.hasBlePermission()) vm.startScan()
+        else vm.toast.value = "Bluetooth-Berechtigung fehlt – bitte „Zulassen“ wählen (Einstellungen → Apps → LoRa-KI → Berechtigungen)"
     }
+    val bleLog by vm.bleLog.collectAsState()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
     Scaffold(topBar = {
         TopAppBar(title = { Text("Einstellungen") }, navigationIcon = { IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück") } })
@@ -90,11 +94,17 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                     if (link == LinkState.DISCONNECTED) OutlinedButton({ vm.reconnect() }, enabled = vm.settings.deviceAddress != null) { Text("Verbinden") }
                     else OutlinedButton({ vm.disconnect() }) { Text("Trennen") }
                 }
+                if (scanning && found.isEmpty()) Text("Suche läuft … Node einschalten und nahe ans Handy halten. Ist die MeshCore-App noch mit dem Node verbunden, bitte dort trennen (der Node akzeptiert nur eine Verbindung).", fontSize = 12.sp)
                 found.forEach { d ->
-                    Card(Modifier.fillMaxWidth().clickable { vm.connect(d) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Column(Modifier.padding(12.dp)) { Text(d.name); Text("${d.address} · ${d.rssi} dBm", fontSize = 12.sp) }
+                    Card(Modifier.fillMaxWidth().clickable { vm.connect(d) }, colors = CardDefaults.cardColors(
+                        containerColor = if (d.likely) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text((if (d.likely) "★ " else "") + d.name)
+                            Text("${d.address} · ${d.rssi} dBm" + if (d.likely) " · MeshCore-Node" else "", fontSize = 12.sp)
+                        }
                     }
                 }
+                OutlinedButton({ ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)) }) { Text("Android-Bluetooth-Einstellungen") }
                 Text("Beim ersten Verbinden fragt Android nach der Kopplung. Standard-PIN der MeshCore-Companion-Firmware: 123456.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
@@ -138,6 +148,15 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 Text("Maximale Anhanggröße: ${maxKb.toInt()} KB", fontSize = 13.sp)
                 Slider(maxKb, { maxKb = it; vm.settings.maxAttachKb = it.toInt() }, valueRange = 8f..200f)
                 Text("Auf der Funkstrecke sind ca. 5–10 Byte/s realistisch – 60 KB dauern deshalb Stunden. Die geschätzte Dauer zeigt die App vor dem Senden.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            Section("5 · Verbindungsprotokoll") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton({ clipboard.setText(androidx.compose.ui.text.AnnotatedString(bleLog.joinToString("\n"))) }, enabled = bleLog.isNotEmpty()) { Text("Kopieren") }
+                    OutlinedButton({ vm.clearLog() }, enabled = bleLog.isNotEmpty()) { Text("Leeren") }
+                }
+                if (bleLog.isEmpty()) Text("Noch keine Einträge.", fontSize = 12.sp)
+                bleLog.takeLast(60).forEach { Text(it, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) }
             }
         }
     }

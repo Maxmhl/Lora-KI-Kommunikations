@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -89,6 +91,9 @@ fun ChatScreen(vm: MainViewModel, onSettings: () -> Unit) {
     var attachMenu by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf(false) }
+    var modelDialog by remember { mutableStateOf(false) }
+    val models by vm.models.collectAsState()
+    val currentModel = convs.firstOrNull { it.id == current }?.model
     val listState = rememberLazyListState()
 
     LaunchedEffect(toast) { toast?.let { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show(); vm.toast.value = null } }
@@ -115,6 +120,8 @@ fun ChatScreen(vm: MainViewModel, onSettings: () -> Unit) {
                     title = {
                         Column {
                             Text(convs.firstOrNull { it.id == current }?.title ?: "LoRa-KI", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("Modell: ${currentModel ?: "Server-Standard"} ▾", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.clickable { modelDialog = true })
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(8.dp).background(
                                     when (link) { LinkState.READY -> Color(0xFF2E7D32); LinkState.CONNECTING -> Color(0xFFF9A825); else -> Color(0xFFC62828) }, CircleShape))
@@ -128,6 +135,7 @@ fun ChatScreen(vm: MainViewModel, onSettings: () -> Unit) {
                         Box {
                             IconButton({ menu = true }) { Icon(Icons.Default.MoreVert, "Mehr") }
                             DropdownMenu(menu, { menu = false }) {
+                                DropdownMenuItem({ Text("KI-Modell wählen …") }, { menu = false; modelDialog = true })
                                 DropdownMenuItem({ Text("Kontext der KI zurücksetzen") }, { menu = false; vm.resetContext() })
                                 DropdownMenuItem({ Text("Unterhaltung löschen") }, { menu = false; confirmDelete = true })
                             }
@@ -188,6 +196,27 @@ fun ChatScreen(vm: MainViewModel, onSettings: () -> Unit) {
         }
     }
 
+    if (modelDialog) AlertDialog(
+        onDismissRequest = { modelDialog = false },
+        title = { Text("KI-Modell") },
+        text = {
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                @Composable fun option(label: String, sub: String?, selected: Boolean, onPick: () -> Unit) {
+                    Row(Modifier.fillMaxWidth().clickable { onPick(); modelDialog = false }, verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.RadioButton(selected, { onPick(); modelDialog = false })
+                        Column { Text(label); sub?.let { Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+                    }
+                }
+                option("Server-Standard", "das in der Bridge konfigurierte Modell", currentModel == null) { vm.selectModel(null) }
+                models.forEach { m -> option(m.name, if (m.vision) "versteht Bilder" else null, currentModel == m.name) { vm.selectModel(m.name) } }
+                if (models.isEmpty()) Text("Noch keine Modellliste. Unten „Liste vom Server laden“ tippen (kostet einige Sekunden Sendezeit); sie erscheint danach hier.",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { TextButton({ vm.requestModels() }, enabled = link == LinkState.READY) { Text("Liste vom Server laden") } },
+        dismissButton = { TextButton({ modelDialog = false }) { Text("Schließen") } },
+    )
+
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
         title = { Text("Unterhaltung löschen?") },
@@ -210,6 +239,8 @@ private fun Bubble(m: ChatMessage, vm: MainViewModel) {
                 when (m.kind) {
                     Lkp.KIND_IMAGE, Lkp.KIND_FILE -> Text((if (m.kind == Lkp.KIND_IMAGE) "🖼 " else "📎 ") + (m.fileName ?: "Datei") + "  (${"%.1f".format(m.size / 1024.0)} KB)")
                     Lkp.KIND_RESET -> Text("↺ Kontext zurückgesetzt", fontSize = 13.sp)
+                    Lkp.KIND_SET_MODEL -> Text("Modell: " + m.text.ifEmpty { "Server-Standard" }, fontSize = 13.sp)
+                    Lkp.KIND_MODEL_LIST_REQ -> Text(m.text, fontSize = 13.sp)
                     else -> Text(if (mine) androidx.compose.ui.text.AnnotatedString(m.text) else markdown(m.text))
                 }
                 if (mine) StatusLine(m, vm)

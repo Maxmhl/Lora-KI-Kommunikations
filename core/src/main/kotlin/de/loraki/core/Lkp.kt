@@ -30,6 +30,9 @@ object Lkp {
     const val KIND_REPLY = 4
     const val KIND_STATUS = 5
     const val KIND_RESET = 6
+    const val KIND_MODEL_LIST_REQ = 7
+    const val KIND_MODEL_LIST = 8
+    const val KIND_SET_MODEL = 9
 
     private const val FLAG_ZLIB = 1
     private const val MAX_INFLATED = 8 * 1024 * 1024

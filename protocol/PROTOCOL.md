@@ -14,10 +14,16 @@ crc32(4, BE) | flags(1) | kind(1) | conv(1) | payload
 ```
 * `crc32` über `flags|kind|conv|payload` (nach evtl. Kompression, wie gesendet)
 * `flags` Bit0 = payload ist zlib-komprimiert (nur gesetzt, wenn es kleiner wird)
-* `kind`: 1 Text · 2 Bild · 3 Datei · 4 KI-Antwort · 5 Status/Fehler · 6 Kontext zurücksetzen
+* `kind`: 1 Text · 2 Bild · 3 Datei · 4 KI-Antwort · 5 Status/Fehler · 6 Kontext zurücksetzen · 7 Modellliste anfordern · 8 Modellliste · 9 Modell wählen
 * `conv`: Unterhaltungs-ID 0–255 (Server hält Verlauf pro Absender + conv)
 * Bild/Datei-Payload: `len(name)(1) name len(mime)(1) mime daten`
 * Anhänge werden vom Server **zwischengespeichert** und mit der nächsten Textnachricht derselben `conv` ausgewertet.
+
+## Modellauswahl
+* `7` (App → Server, leere Nutzlast): Server antwortet mit `8` (Zeilen `name<TAB>flags`, Flag `v` = versteht Bilder).
+* `9` (App → Server, Nutzlast = Modellname): Modell für diese `conv`; leer = Server-Standard. Die Bridge prüft den Namen
+  gegen ihre Liste (sonst Statusmeldung `5`) und speichert die Wahl dauerhaft pro `(Absender, conv)`.
+* Bilder: hat das gewählte Modell kein Bildverständnis, nutzt die Bridge `vision_model` (falls konfiguriert), sonst werden sie mit Hinweis ignoriert.
 
 ## Frames (je eine MeshCore-Textnachricht, nur ASCII)
 Zahlen sind 12 Bit in 2 Zeichen des Alphabets `A–Z a–z 0–9 + /` (Index = Wert, 0–4095).
