@@ -1,0 +1,21 @@
+# systemd-Dienst für die LoRa-KI-Bridge inkl. Gateway (Pfad/Benutzer anpassen)
+# Installation:  sudo cp deploy/lkbridge.service /etc/systemd/system/ && sudo systemctl enable --now lkbridge
+[Unit]
+Description=LoRa-KI Bridge + NOMAD-Gateway
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=lkbridge
+Group=dialout
+WorkingDirectory=/opt/lora-ki/bridge
+ExecStart=/opt/lora-ki/bridge/.venv/bin/python -m lkbridge -c /opt/lora-ki/bridge/config.toml
+Restart=on-failure
+RestartSec=5
+# NOMAD-Speicher nur lesen
+ReadOnlyPaths=/opt/project-nomad/storage
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

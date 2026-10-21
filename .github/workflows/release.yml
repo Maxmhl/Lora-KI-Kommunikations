@@ -20,9 +20,13 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -r bridge/requirements-dev.txt && cd bridge && python -m pytest -q
+      - run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/Crosstalk-Solutions/project-nomad nomad-src
+          git -C nomad-src sparse-checkout set install
       - run: ./gradlew :core:test :app:assembleDebug
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
+          LK_TEST_ZIM: ${{ github.workspace }}/nomad-src/install/wikipedia_en_100_mini_2026-01.zim
       - name: Release erstellen
         env:
           GH_TOKEN: ${{ github.token }}

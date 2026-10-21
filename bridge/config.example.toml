@@ -32,3 +32,21 @@ max_context_chars = 12000
 # Unbekannte Absender werden im Log mit ihrem Präfix gemeldet.
 allowed_peers = []
 allow_all = false
+
+# ---------------------------------------------------------------------------------------------
+# Project NOMAD (läuft vollständig auf diesem Server, im Intranet direkt unter http://SERVER:8080 erreichbar)
+[nomad]
+url = "http://127.0.0.1:8080"        # NOMAD Command Center
+storage = "/opt/project-nomad/storage"
+knowledge_base = false               # true: LoRa-Chat nutzt NOMADs Wissensdatenbank (RAG) statt reinem Ollama
+
+# Gateway: EINE abgesicherte Schnittstelle für die App (WLAN/VPN, nicht LoRa)
+#  - zeigt in der App dieselbe NOMAD-Oberfläche wie der Browser (NOMAD selbst hat keine Anmeldung -> Token davor)
+#  - liefert Karten/Bibliotheken zum einmaligen Download aufs Handy
+[gateway]
+enabled = false
+host = "0.0.0.0"
+port = 8765
+token = ""                           # mind. 16 Zeichen, z. B.: python -c "import secrets;print(secrets.token_urlsafe(24))"
+# exclude = ["ted_", "khan", "kolibri", "video"]   # Dateinamen-Muster, die NICHT angeboten werden (Bildung/Videos)
+# max_file_gb = 40

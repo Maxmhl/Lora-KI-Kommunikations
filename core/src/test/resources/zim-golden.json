@@ -1,0 +1,211 @@
+{
+ "file": "wikipedia_en_100_mini_2026-01.zim",
+ "entryCount": 5133,
+ "minor": 3,
+ "entries": [
+  {
+   "i": 0,
+   "path": "(Keep_Your)_Hands_Off_(Of_It)",
+   "title": "(Keep Your) Hands Off (Of It)",
+   "redirect": true,
+   "target": "Elvis_Presley"
+  },
+  {
+   "i": 1,
+   "path": "10.53104",
+   "title": "10.53104",
+   "redirect": false,
+   "mime": "text/html",
+   "size": 232,
+   "sha1": "3aa88bbcfd25d88ccad30118858110ca94273113"
+  },
+  {
+   "i": 2,
+   "path": "10_Largest_Cities_in_the_United_States",
+   "title": "10 Largest Cities in the United States",
+   "redirect": true,
+   "target": "List_of_United_States_cities_by_population"
+  },
+  {
+   "i": 5,
+   "path": "13th_Amendment,_U.S._Constitution",
+   "title": "13th Amendment, U.S. Constitution",
+   "redirect": true,
+   "target": "Thirteenth_Amendment_to_the_United_States_Constitution"
+  },
+  {
+   "i": 50,
+   "path": "AIDS",
+   "title": "AIDS",
+   "redirect": true,
+   "target": "HIV/AIDS"
+  },
+  {
+   "i": 100,
+   "path": "Aeroflot_Stadium",
+   "title": "Aeroflot Stadium",
+   "redirect": true,
+   "target": "Old_Trafford"
+  },
+  {
+   "i": 500,
+   "path": "Attacking_Midfielder",
+   "title": "Attacking Midfielder",
+   "redirect": false,
+   "mime": "text/html",
+   "size": 252,
+   "sha1": "638cac90a92396b3810f7238c3481ab21566857a"
+  },
+  {
+   "i": 1000,
+   "path": "Communication_in_bats",
+   "title": "Communication in bats",
+   "redirect": false,
+   "mime": "text/html",
+   "size": 226,
+   "sha1": "c3ed6083f306af26e207399658cf9e7e9c0bb4d0"
+  },
+  {
+   "i": 2000,
+   "path": "His_Majesty_King_George_IV",
+   "title": "His Majesty King George IV",
+   "redirect": true,
+   "target": "George_IV"
+  },
+  {
+   "i": 3000,
+   "path": "NFL_Canada",
+   "title": "NFL Canada",
+   "redirect": true,
+   "target": "National_Football_League"
+  },
+  {
+   "i": 4000,
+   "path": "Sun_eclipse",
+   "title": "Sun eclipse",
+   "redirect": true,
+   "target": "Solar_eclipse"
+  },
+  {
+   "i": 4500,
+   "path": "Usa_state",
+   "title": "Usa state",
+   "redirect": true,
+   "target": "U.S._state"
+  },
+  {
+   "i": 5000,
+   "path": "_assets_/0c70a452f799bfe840676ee341124611/Mariah_Carey_Library_of_Congress_2023_1_Cropped_3.png",
+   "title": "null",
+   "redirect": false,
+   "mime": "image/webp",
+   "size": 21572,
+   "sha1": "d0d3c1bc2949586bb10427f0ae38894b26963b54"
+  },
+  {
+   "i": 5100,
+   "path": "\u9a6c\u6765\u897f\u4e9a",
+   "title": "\u9a6c\u6765\u897f\u4e9a",
+   "redirect": true,
+   "target": "Malaysia"
+  },
+  {
+   "i": 5110,
+   "path": "\ud83d\udc2f",
+   "title": "\ud83d\udc2f",
+   "redirect": true,
+   "target": "Tiger"
+  },
+  {
+   "i": 5120,
+   "path": "Flavour",
+   "title": "Flavour",
+   "redirect": false,
+   "mime": "text/plain",
+   "size": 4,
+   "sha1": "677e90849a0b87c65e6cfb98b20848c0fa1188a7"
+  },
+  {
+   "i": 5121,
+   "path": "Illustration_48x48@1",
+   "title": "Illustration_48x48@1",
+   "redirect": false,
+   "mime": "image/png",
+   "size": 4496,
+   "sha1": "ea0bb5fb5212f653fe39936fc1dde77347a15912"
+  },
+  {
+   "i": 5128,
+   "path": "Title",
+   "title": "Title",
+   "redirect": false,
+   "mime": "text/plain",
+   "size": 13,
+   "sha1": "962fbdb2cac24ad858b309c4f3eadeee12c8c171"
+  },
+  {
+   "i": 873,
+   "path": "Central_defender",
+   "title": "Central defender",
+   "redirect": false,
+   "mime": "text/html",
+   "size": 268,
+   "sha1": "88c247919702303d4405cf91ccb4fb212c7fc31d"
+  },
+  {
+   "i": 1067,
+   "path": "Cycling_in_Dublin",
+   "title": "Cycling in Dublin",
+   "redirect": false,
+   "mime": "text/html",
+   "size": 212,
+   "sha1": "3f1d78657988e396455ec8d528c100b917abdb7a"
+  },
+  {
+   "i": 1552,
+   "path": "Etymology_of_Antarctica",
+   "title": "Etymology of Antarctica",
+   "redirect": false,
+   "mime": "text/html",
+   "size": 236,
+   "sha1": "33bb191867a03fab55f02786408490406c0ef24f"
+  },
+  {
+   "i": 1746,
+   "path": "Full_back_(association_football)",
+   "title": "Full back (association football)",
+   "redirect": false,
+   "mime": "text/html",
+   "size": 296,
+   "sha1": "d72089f9d3fcd09b072d1073ada7e2539af3890f"
+  },
+  {
+   "i": 2134,
+   "path": "Hunting_behavior_of_lions",
+   "title": "Hunting behavior of lions",
+   "redirect": false,
+   "mime": "text/html",
+   "size": 242,
+   "sha1": "657c0a57e4eba843edec994eccd2a1e4e60bd5c1"
+  },
+  {
+   "i": 2522,
+   "path": "List_of_World_Heritage_Sites_of_Europe",
+   "title": "List of World Heritage Sites of Europe",
+   "redirect": false,
+   "mime": "text/html",
+   "size": 324,
+   "sha1": "3d305e16950fe13524bd091b7fbe0c9044ff8097"
+  }
+ ],
+ "main": "index",
+ "metaTitle": "Wikipedia 100",
+ "suggest_Par": [
+  "Pars_lateralis",
+  "Pardine",
+  "Paraguayan_jaguar",
+  "Parasitic_fungi",
+  "Parasitic_fungus"
+ ],
+ "suggest_Albert": []
+}

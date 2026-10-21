@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link rel="stylesheet" href="maplibre-gl.css">
+<style>
+  html, body, #map { margin: 0; height: 100%; width: 100%; }
+  #msg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px;
+         text-align: center; font: 16px system-ui, sans-serif; color: #444; background: #f4f4f4; z-index: 5; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="msg"></div>
+<script src="maplibre-gl.js"></script>
+<script src="pmtiles.js"></script>
+<script>
+(async function () {
+  const msg = (t) => { const m = document.getElementById("msg"); m.textContent = t; m.style.display = "flex"; };
+  try {
+    const protocol = new pmtiles.Protocol();
+    maplibregl.addProtocol("pmtiles", protocol.tile);
+
+    const res = await fetch("/style.json");
+    if (!res.ok) { msg(await res.text()); return; }
+    const style = await res.json();
+
+    // Kartenausschnitt: erste Region (nicht die Weltkarte) anzeigen
+    let center = [10.45, 51.16], zoom = 5, bounds = null;
+    for (const [name, src] of Object.entries(style.sources)) {
+      if (name === "world") continue;
+      try {
+        const p = new pmtiles.PMTiles(src.url.replace("pmtiles://", ""));
+        protocol.add(p);
+        const h = await p.getHeader();
+        bounds = [[h.minLon, h.minLat], [h.maxLon, h.maxLat]];
+        break;
+      } catch (e) { /* weiter */ }
+    }
+
+    const map = new maplibregl.Map({
+      container: "map", style, center, zoom, bounds: bounds || undefined, fitBoundsOptions: { padding: 20 },
+      attributionControl: { compact: true }, maxPitch: 0, dragRotate: false,
+    });
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    map.addControl(new maplibregl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true }, trackUserLocation: true, showUserLocation: true,
+    }), "top-right");
+    map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
+    map.on("error", (e) => console.log("map error: " + (e && e.error && e.error.message)));
+    window.__map = map;
+  } catch (e) {
+    msg("Karte konnte nicht geladen werden: " + e.message);
+  }
+})();
+</script>
+</body>
+</html>

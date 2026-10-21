@@ -21,6 +21,11 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
+      # Mini-Wikipedia aus Project NOMAD (Apache-2.0-Repo) für die ZIM-Reader-Tests
+      - run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/Crosstalk-Solutions/project-nomad nomad-src
+          git -C nomad-src sparse-checkout set install
       - run: ./gradlew :core:test :app:lintDebug :app:assembleDebug
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
+          LK_TEST_ZIM: ${{ github.workspace }}/nomad-src/install/wikipedia_en_100_mini_2026-01.zim

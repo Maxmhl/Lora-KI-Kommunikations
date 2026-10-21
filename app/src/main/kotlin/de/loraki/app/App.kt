@@ -10,6 +10,8 @@ import de.loraki.app.ble.LinkState
 import de.loraki.app.ble.MeshSession
 import de.loraki.app.data.Settings
 import de.loraki.app.data.Store
+import de.loraki.app.nomad.NomadRepo
+import de.loraki.app.nomad.NomadWork
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,6 +24,7 @@ class Graph(val ctx: Context) {
     val store = Store(ctx)
     val session = MeshSession(ctx, scope)
     val engine = Engine(ctx, scope, store, settings, session)
+    val nomad = NomadRepo(ctx, scope, settings)
 
     private fun granted(p: String) = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
 
@@ -44,6 +47,11 @@ class Graph(val ctx: Context) {
     }
 
     init {
+        NomadWork.ensureChannel(ctx)
+        NomadWork.scheduleSync(ctx, settings)
+        // überfällige Update-Prüfung nachholen (Doze kann periodische Jobs verzögern)
+        if (settings.nomadUrl.isNotBlank() && de.loraki.core.Nomad.shouldCheck(settings.nomadLastCheck, System.currentTimeMillis(), settings.nomadIntervalDays))
+            NomadWork.syncNow(ctx, settings)
         // automatisch wieder verbinden, solange der Nutzer verbunden sein möchte
         scope.launch {
             while (true) {

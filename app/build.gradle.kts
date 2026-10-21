@@ -12,8 +12,8 @@ android {
         applicationId = "de.loraki.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
     }
 
     buildTypes {
@@ -41,5 +41,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+    // Native zstd-Bibliothek für den ZIM-Leser (core nutzt sie nur zur Kompilierzeit)
+    implementation("com.github.luben:zstd-jni:1.5.6-6@aar")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

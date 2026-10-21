@@ -15,7 +15,15 @@ Bilder und Dateien. Große Objekte werden fragmentiert und unter Einhaltung des 
 | `core/` | Reiner Kotlin-Kern (LKP-Protokoll, Airtime, Duty-Cycle, Fragmentierung, Companion-Frames) – auf der JVM testbar |
 | `bridge/` | Python-Dienst am Server-Node: Reassembly, Ollama, Dateiextraktion (TXT/PDF/DOCX/…) |
 | `protocol/` | Protokollspezifikation + gemeinsame Testvektoren (Python ⇄ Kotlin) |
-| `docs/` | Rechtlicher Rahmen |
+| `docs/` | Rechtlicher Rahmen, Server-Einrichtung (`SERVER.md`), Lizenzen (`LIZENZEN.md`) |
+| `deploy/` | systemd-Dienst für Bridge + Gateway |
+
+## Nomad-Tab (Offline-Wissen & volle NOMAD-Oberfläche)
+Auf dem Server läuft **vollständiges Project NOMAD** (im Intranet direkt unter `:8080`). Die App bindet es über **eine abgesicherte
+Schnittstelle (Gateway der Bridge)** ein: Tab *Nomad → Oberfläche* zeigt dieselbe Oberfläche wie der Browser. Große Inhalte –
+**Offline-Karten** und **Wikipedia & Co.** – lädt die App **einmal** aufs Handy und aktualisiert sie nur im einstellbaren
+Intervall (täglich/wöchentlich/monatlich/nie, nur WLAN, automatisch oder nur Benachrichtigung). Education-Plattform und Videos werden nicht
+angeboten. Einrichtung: [docs/SERVER.md](docs/SERVER.md).
 
 ## Einrichtung
 

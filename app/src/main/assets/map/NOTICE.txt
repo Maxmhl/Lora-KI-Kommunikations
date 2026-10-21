@@ -1,0 +1,6 @@
+Enthaltene Drittsoftware (nur im Karten-Viewer):
+
+* MapLibre GL JS 4.7.1 – BSD-3-Clause (siehe LICENSE-maplibre-gl.txt) – https://maplibre.org
+* PMTiles 3.2.1 (protomaps) – BSD-3-Clause – https://github.com/protomaps/PMTiles
+
+Kartendaten: © OpenStreetMap-Mitwirkende (ODbL), Basiskarte: Protomaps.

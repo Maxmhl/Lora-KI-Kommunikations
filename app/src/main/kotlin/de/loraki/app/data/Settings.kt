@@ -25,5 +25,18 @@ class Settings(ctx: Context) {
     var limiterJson: String? get() = p.getString("limiter", null); set(v) = p.edit { putString("limiter", v) }
     /** Zuletzt vom Server geladene Modellliste (Zeilen "name\tflags"). */
     var modelsRaw: String get() = p.getString("models", "") ?: ""; set(v) = p.edit { putString("models", v) }
+    // --- Nomad (Gateway der Bridge) ---
+    /** Basis-URL des Gateways, z. B. http://192.168.1.10:8765 (WLAN/VPN). */
+    var nomadUrl: String get() = p.getString("nomadUrl", "") ?: ""; set(v) = p.edit { putString("nomadUrl", v.trim().trimEnd('/')) }
+    var nomadToken: String get() = p.getString("nomadToken", "") ?: ""; set(v) = p.edit { putString("nomadToken", v.trim()) }
+    /** Update-Intervall in Tagen (0 = nie automatisch prüfen). */
+    var nomadIntervalDays: Int get() = p.getInt("nomadInterval", 7); set(v) = p.edit { putInt("nomadInterval", v) }
+    var nomadWifiOnly: Boolean get() = p.getBoolean("nomadWifi", true); set(v) = p.edit { putBoolean("nomadWifi", v) }
+    /** true: Updates automatisch laden; false: nur benachrichtigen. */
+    var nomadAutoDownload: Boolean get() = p.getBoolean("nomadAuto", false); set(v) = p.edit { putBoolean("nomadAuto", v) }
+    var nomadLastCheck: Long get() = p.getLong("nomadLast", 0); set(v) = p.edit { putLong("nomadLast", v) }
+    var nomadManifestJson: String? get() = p.getString("nomadManifest", null); set(v) = p.edit { putString("nomadManifest", v) }
+    var nomadInstalledJson: String? get() = p.getString("nomadInstalled", null); set(v) = p.edit { putString("nomadInstalled", v) }
+    var nomadWanted: Set<String> get() = p.getStringSet("nomadWanted", emptySet()) ?: emptySet(); set(v) = p.edit { putStringSet("nomadWanted", v) }
     var wantConnected: Boolean get() = p.getBoolean("want", false); set(v) = p.edit { putBoolean("want", v) }
 }
