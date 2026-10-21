@@ -52,6 +52,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.loraki.app.nomad.NomadLookupViewModel
 import de.loraki.app.nomad.NomadMode
+import de.loraki.app.nomad.PositionSource
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import de.loraki.core.NomadRequest
 import kotlinx.coroutines.delay
 
@@ -163,6 +167,7 @@ private fun currentLocation(ctx: Context, onResult: (Location?) -> Unit) {
     } else onResult(last)
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun MapRequestTab(vm: NomadLookupViewModel) {
     val ctx = LocalContext.current
@@ -170,41 +175,67 @@ fun MapRequestTab(vm: NomadLookupViewModel) {
     val map by vm.map.collectAsState()
     val regions by vm.regions.collectAsState()
     val quality by vm.quality.collectAsState()
+    val radius by vm.radius.collectAsState()
+    val position by vm.position.collectAsState()
+    val source by vm.source.collectAsState()
+    val target by vm.target.collectAsState()
+    val canBack by vm.canGoBack.collectAsState()
     val busy by vm.busy.collectAsState()
     val error by vm.error.collectAsState()
-    var lat by rememberSaveable { mutableStateOf("") }
-    var lon by rememberSaveable { mutableStateOf("") }
+    var manualLat by rememberSaveable { mutableStateOf("") }
+    var manualLon by rememberSaveable { mutableStateOf("") }
     var qMenu by remember { mutableStateOf(false) }
+    var rMenu by remember { mutableStateOf(false) }
     var locating by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
-    fun request() {
-        val la = lat.replace(',', '.').toDoubleOrNull(); val lo = lon.replace(',', '.').toDoubleOrNull()
-        if (la == null || lo == null || la !in -85.0..85.0 || lo !in -180.0..180.0) { vm.error.value = "Bitte gültige Koordinaten eingeben (z. B. 49.4075 und 8.6935)"; return }
-        vm.requestMap(la, lo)
-    }
-    fun useLocation() {
+    fun fromPhone() {
         locating = true
         currentLocation(ctx) { loc ->
             locating = false
-            if (loc == null) vm.error.value = "Standort nicht verfügbar (GPS an? Draußen versuchen)"
-            else { lat = "%.5f".format(java.util.Locale.ROOT, loc.latitude); lon = "%.5f".format(java.util.Locale.ROOT, loc.longitude); vm.requestMap(loc.latitude, loc.longitude) }
+            if (loc == null) vm.error.value = "Handy-Standort nicht verfügbar (GPS an? Draußen versuchen)"
+            else vm.setPosition(loc.latitude, loc.longitude, PositionSource.PHONE)
         }
     }
-    val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r -> if (r.values.any { it }) useLocation() else vm.error.value = "Standort-Berechtigung fehlt" }
+    val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r -> if (r.values.any { it }) fromPhone() else vm.error.value = "Standort-Berechtigung fehlt" }
+
+    fun fetchPosition() {
+        when (source) {
+            PositionSource.NODE -> vm.positionFromNode()
+            PositionSource.PHONE -> {
+                val ok = androidx.core.content.ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                if (ok) fromPhone() else perm.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            }
+            PositionSource.MANUAL -> {
+                val la = manualLat.replace(',', '.').toDoubleOrNull(); val lo = manualLon.replace(',', '.').toDoubleOrNull()
+                if (la == null || lo == null || la !in -85.0..85.0 || lo !in -180.0..180.0) vm.error.value = "Bitte gültige Koordinaten eingeben (z. B. 49.4075 und 8.6935)"
+                else vm.setPosition(la, lo, PositionSource.MANUAL)
+            }
+        }
+    }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ModeBanner(vm, busy)
         Column(Modifier.padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(lat, { lat = it }, Modifier.weight(1f), label = { Text("Breite") }, singleLine = true)
-                OutlinedTextField(lon, { lon = it }, Modifier.weight(1f), label = { Text("Länge") }, singleLine = true)
+            Text("1 · Position", style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                PositionSource.entries.forEach { s -> androidx.compose.material3.FilterChip(source == s, { vm.setSource(s) }, label = { Text(s.label) }) }
+            }
+            if (source == PositionSource.MANUAL) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(manualLat, { manualLat = it }, Modifier.weight(1f), label = { Text("Breite") }, singleLine = true)
+                OutlinedTextField(manualLon, { manualLon = it }, Modifier.weight(1f), label = { Text("Länge") }, singleLine = true)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton({
-                    val ok = Manifest.permission.ACCESS_FINE_LOCATION.let { androidx.core.content.ContextCompat.checkSelfPermission(ctx, it) } == PackageManager.PERMISSION_GRANTED
-                    if (ok) useLocation() else perm.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                }, enabled = !busy && !locating && mode != NomadMode.NONE) { Text(if (locating) "Suche …" else "Mein Standort") }
+                OutlinedButton({ fetchPosition() }, enabled = !busy && !locating) { Text(if (locating) "Suche …" else if (source == PositionSource.MANUAL) "Übernehmen" else "Position holen") }
+                Text(position?.let { "%.5f, %.5f (%s)".format(java.util.Locale.ROOT, it.lat, it.lon, it.source.label) } ?: "noch keine Position", fontSize = 12.sp)
+            }
+            if (source == PositionSource.NODE) Text("Nutzt die vom Node gemeldete Position (GPS am Node muss aktiv sein und einen Fix haben).", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            Text("2 · Radius und Detailgrad", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box {
+                    OutlinedButton({ rMenu = true }) { Text("Radius: ${radius.label}") }
+                    DropdownMenu(rMenu, { rMenu = false }) { NomadRequest.MapRadius.entries.forEach { r -> DropdownMenuItem({ Text(r.label) }, { vm.setRadius(r); rMenu = false }) } }
+                }
                 Box {
                     OutlinedButton({ qMenu = true }) { Text(quality.label) }
                     DropdownMenu(qMenu, { qMenu = false }) {
@@ -212,25 +243,52 @@ fun MapRequestTab(vm: NomadLookupViewModel) {
                     }
                 }
             }
-            Button({ request() }, enabled = !busy && mode != NomadMode.NONE, modifier = Modifier.fillMaxWidth()) { Text("Kartenausschnitt anfordern" + eta(vm.access.estimateSeconds(quality.approxBytes))) }
+            Button({ position?.let { vm.requestMap(it.lat, it.lon) } }, enabled = !busy && mode != NomadMode.NONE && position != null, modifier = Modifier.fillMaxWidth()) {
+                Text("Karte um meine Position anfordern" + eta(vm.access.estimateSeconds(quality.approxBytes + 280)))
+            }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
         }
 
         map?.let { m ->
             Column(Modifier.padding(8.dp)) {
-                Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+                Text("3 · Ort antippen für eine Detailkarte", style = MaterialTheme.typography.titleSmall)
+                var imgSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+                Box(Modifier.fillMaxWidth().aspectRatio(1f).onSizeChanged { imgSize = it }.pointerInput(m) {
+                    detectTapGestures { off -> if (imgSize.width > 0) { val (la, lo) = m.section.toLatLon(off.x / imgSize.width.toDouble(), off.y / imgSize.height.toDouble()); vm.selectTarget(la, lo) } }
+                }) {
                     Image(m.bitmap.asImageBitmap(), "Kartenausschnitt", Modifier.fillMaxSize(), filterQuality = FilterQuality.None)
-                    OutlinedButton({ vm.pan(0.0, 1.0) }, Modifier.align(Alignment.TopCenter), enabled = !busy) { Text("N") }
-                    OutlinedButton({ vm.pan(0.0, -1.0) }, Modifier.align(Alignment.BottomCenter), enabled = !busy) { Text("S") }
-                    OutlinedButton({ vm.pan(-1.0, 0.0) }, Modifier.align(Alignment.CenterStart), enabled = !busy) { Text("W") }
-                    OutlinedButton({ vm.pan(1.0, 0.0) }, Modifier.align(Alignment.CenterEnd), enabled = !busy) { Text("O") }
+                    target?.let { (la, lo) ->
+                        m.section.toFraction(la, lo)?.let { (fx, fy) ->
+                            androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                                val c = androidx.compose.ui.geometry.Offset((fx * size.width).toFloat(), (fy * size.height).toFloat())
+                                drawCircle(androidx.compose.ui.graphics.Color(0xFF1F6FEB), radius = 14f, center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f))
+                                drawCircle(androidx.compose.ui.graphics.Color(0xFF1F6FEB), radius = 3f, center = c)
+                            }
+                        }
+                    }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
-                    OutlinedButton({ vm.zoomBy(-1) }, enabled = !busy) { Text("− weiter weg") }
-                    OutlinedButton({ vm.zoomBy(1) }, enabled = !busy) { Text("+ näher") }
+                target?.let { (la, lo) ->
+                    Button({ vm.detailAt(la, lo) }, enabled = !busy, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                        Text("Detailkarte hier (Radius ${m.request.radius.finer().label})" + eta(vm.access.estimateSeconds(quality.approxBytes + 280)))
+                    }
                 }
-                Text("Zoom ${m.section.zoom} · 1 Pixel ≈ ${m.section.metersPerPixel} m · Ausschnitt ≈ ${(m.section.size * m.section.metersPerPixel).toInt()} m · Region ${m.section.region}", fontSize = 11.sp)
-                Text("Mitte %.5f, %.5f".format(java.util.Locale.ROOT, m.request.first, m.request.second), fontSize = 11.sp)
+                if (m.section.places.isNotEmpty()) {
+                    Text("Orte in diesem Ausschnitt", fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        m.section.places.forEach { p -> androidx.compose.material3.AssistChip({ vm.detailAt(p.lat, p.lon) }, label = { Text(p.name) }, enabled = !busy) }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
+                    OutlinedButton({ vm.pan(0.0, 1.0) }, enabled = !busy) { Text("N") }
+                    OutlinedButton({ vm.pan(0.0, -1.0) }, enabled = !busy) { Text("S") }
+                    OutlinedButton({ vm.pan(-1.0, 0.0) }, enabled = !busy) { Text("W") }
+                    OutlinedButton({ vm.pan(1.0, 0.0) }, enabled = !busy) { Text("O") }
+                    OutlinedButton({ vm.radiusBy(-1) }, enabled = !busy) { Text("−R") }
+                    OutlinedButton({ vm.radiusBy(1) }, enabled = !busy) { Text("+R") }
+                }
+                if (canBack) OutlinedButton({ vm.back() }, enabled = !busy) { Text("← Vorherige Karte") }
+                Text("Radius ${m.request.radius.label} · 1 Pixel ≈ ${m.section.metersPerPixel} m · Region ${m.section.region}", fontSize = 11.sp)
+                Text("Mitte %.5f, %.5f".format(java.util.Locale.ROOT, m.request.lat, m.request.lon) + target?.let { "  ·  Ziel %.5f, %.5f".format(java.util.Locale.ROOT, it.first, it.second) }.orEmpty(), fontSize = 11.sp)
                 Text("© OpenStreetMap-Mitwirkende, Protomaps (ODbL)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -239,11 +297,12 @@ fun MapRequestTab(vm: NomadLookupViewModel) {
             OutlinedButton({ vm.loadRegions() }, enabled = !busy && mode != NomadMode.NONE) { Text("Verfügbare Karten anzeigen" + eta(vm.access.estimateSeconds(150))) }
             regions.forEach { r ->
                 Text("${r.name} · bis Zoom ${r.maxZoom}", Modifier.fillMaxWidth().clickable {
-                    lat = "%.5f".format(java.util.Locale.ROOT, (r.minLat + r.maxLat) / 2); lon = "%.5f".format(java.util.Locale.ROOT, (r.minLon + r.maxLon) / 2)
+                    manualLat = "%.5f".format(java.util.Locale.ROOT, (r.minLat + r.maxLat) / 2); manualLon = "%.5f".format(java.util.Locale.ROOT, (r.minLon + r.maxLon) / 2)
+                    vm.setSource(PositionSource.MANUAL)
                 }.padding(vertical = 8.dp), fontSize = 13.sp)
             }
-            if (regions.isNotEmpty()) Text("Antippen übernimmt die Mitte der Region als Koordinaten.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (map == null && !busy) Text("Du forderst gezielt einen Ausschnitt an; der Server rendert ihn und schickt nur dieses kleine Bild. Es wird nichts gespeichert.",
+            if (regions.isNotEmpty()) Text("Antippen übernimmt die Mitte der Region als manuelle Position.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (map == null && !busy) Text("Deine Position geht (verschlüsselt) an den Server, der zeichnet sie in die Karte ein und schickt nur dieses kleine Bild zurück. Es wird nichts gespeichert.",
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
         }
     }

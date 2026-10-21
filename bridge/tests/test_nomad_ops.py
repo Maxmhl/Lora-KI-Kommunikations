@@ -89,7 +89,7 @@ async def test_errors_are_short_text(kiwix):
     assert head[0] == "error" and "konfiguriert" in head[1]
     head, _ = parse(await ops.handle(f"article\t{BOOK}\tGibtsNicht\t0\t100\ttext".encode()))
     assert head[0] == "error"
-    head, _ = parse(await ops.handle(b"map\t49.4\t8.7\t14\t160"))
+    head, _ = parse(await ops.handle(b"map\t49.4\t8.7\t500\t160"))
     assert head[0] == "error"                                       # kein Speicher konfiguriert
 
 
@@ -100,9 +100,6 @@ def make_pmtiles(path: Path, lat: float, lon: float, z: int = 14):
     from pmtiles.tile import Compression, TileType, zxy_to_tileid
     from pmtiles.writer import Writer
 
-    n = 2**z
-    x = int((lon + 180) / 360 * n)
-    y = int((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n)
     mvt = mapbox_vector_tile.encode([
         {"name": "earth", "features": [{"geometry": "POLYGON((0 0,4096 0,4096 4096,0 4096,0 0))", "properties": {"kind": "earth"}}]},
         {"name": "water", "features": [{"geometry": "POLYGON((0 0,4096 0,4096 900,0 900,0 0))", "properties": {"kind": "water"}}]},
@@ -111,12 +108,20 @@ def make_pmtiles(path: Path, lat: float, lon: float, z: int = 14):
                                         {"geometry": "LINESTRING(2048 0,2048 4096)", "properties": {"kind": "minor_road"}}]},
         {"name": "places", "features": [{"geometry": "POINT(2048 1500)", "properties": {"kind": "locality", "name": "Teststadt"}}]},
     ], default_options={"y_coord_down": True})
-    with path.open("wb") as f:
-        w = Writer(f)
+    levels = range(z - 3, z + 1)  # wie in echten Dateien gibt es mehrere Zoomstufen
+    tiles = {}
+    for lv in levels:
+        n = 2**lv
+        x = int((lon + 180) / 360 * n)
+        y = int((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n)
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
-                w.write_tile(zxy_to_tileid(z, x + dx, y + dy), gzip.compress(mvt))
-        w.finalize({"tile_type": TileType.MVT, "tile_compression": Compression.GZIP, "min_zoom": z, "max_zoom": z,
+                tiles[zxy_to_tileid(lv, x + dx, y + dy)] = gzip.compress(mvt)
+    with path.open("wb") as f:
+        w = Writer(f)
+        for tid in sorted(tiles):  # Writer erwartet aufsteigende Kachel-IDs
+            w.write_tile(tid, tiles[tid])
+        w.finalize({"tile_type": TileType.MVT, "tile_compression": Compression.GZIP, "min_zoom": z - 3, "max_zoom": z,
                     "min_lon_e7": int((lon - 0.05) * 1e7), "min_lat_e7": int((lat - 0.05) * 1e7),
                     "max_lon_e7": int((lon + 0.05) * 1e7), "max_lat_e7": int((lat + 0.05) * 1e7),
                     "center_zoom": z, "center_lon_e7": int(lon * 1e7), "center_lat_e7": int(lat * 1e7)}, {})
@@ -129,31 +134,70 @@ def storage(tmp_path):
     return tmp_path
 
 
-async def test_map_section_is_small_valid_image_with_bbox(storage):
+def split_map(resp: bytes):
+    head, _, body = resp.partition(b"\n")
+    h = head.decode().split("\t")
+    n = int(h[11])
+    return h, body[:n], body[n:].decode().splitlines()
+
+
+async def test_map_section_radius_marker_places_and_size(storage):
     ops = NomadOps(None, storage)
     head, body = parse(await ops.handle(b"mapinfo"))
     assert head == ["ok", "mapinfo"] and body.decode().startswith("teststadt_2026-10\t8.6400\t49.3500")
 
     sizes = {}
     for size, colors in ((96, 8), (160, 12)):
-        head, img = parse(await ops.handle(f"map\t49.40\t8.69\t14\t{size}\t{colors}".encode()))
-        assert head[:3] == ["ok", "map", head[2]] and head[2] in ("png", "webp")
+        h, img, places = split_map(await ops.handle(f"map\t49.40\t8.69\t500\t{size}\t{colors}".encode()))
+        assert h[:2] == ["ok", "map"] and h[2] in ("png", "webp")
         im = Image.open(io.BytesIO(img))
         assert im.size == (size, size)
         sizes[size] = len(img)
-        min_lon, min_lat, max_lon, max_lat = map(float, head[6:10])
-        assert min_lon < 8.69 < max_lon and min_lat < 49.40 < max_lat      # Mittelpunkt liegt im gemeldeten Ausschnitt
-    assert sizes[96] < 2500 and sizes[160] < 5000                           # LoRa-tauglich klein
-    px = Image.open(io.BytesIO(img)).convert("RGB")
-    assert px.getpixel((4, 4)) != px.getpixel((150, 150))                  # Wasser oben links ≠ Park unten rechts
+        min_lon, min_lat, max_lon, max_lat = map(float, h[6:10])
+        assert min_lon < 8.69 < max_lon and min_lat < 49.40 < max_lat
+        # Radius 500 m: Bildhälfte ≈ 500 m -> Breitengrad-Spanne ≈ 1000 m ≈ 0,009°
+        assert abs((max_lat - min_lat) - 1000 / 111_320) < 0.0006
+        assert abs(float(h[10]) - 1000 / size) < 0.2                     # Meter pro Pixel
+        assert len(set(im.convert("RGB").getdata())) >= 3                # Bild ist nicht leer (Hintergrund, Wasser, Straßen …)
+    assert sizes[96] < 2500 and sizes[160] < 5000
+
+    # Ortsliste: Mittelpunkt auf den Ort legen (er liegt in jeder Kachel bei 2048/1500)
+    from lkbridge import map_render as mr
+    n = 2**14
+    x = int((8.69 + 180) / 360 * n)
+    y = int((1 - math.asinh(math.tan(math.radians(49.40))) / math.pi) / 2 * n)
+    plat, plon = mr._pixel_to_latlon(x * 256 + 128, y * 256 + 1500 / 4096 * 256, 14)
+    h, img, places = split_map(await ops.handle(f"map\t{plat:.6f}\t{plon:.6f}\t300\t128\t12".encode()))
+    row = next(p for p in places if p.startswith("Teststadt\t")).split("\t")
+    assert abs(float(row[1]) - plat) < 0.0002 and abs(float(row[2]) - plon) < 0.0002 and row[3] == "locality"
+
+
+async def test_radius_changes_extent_and_marker_is_drawn(storage):
+    ops = NomadOps(None, storage)
+    spans = []
+    for radius in (250, 1000, 5000):
+        h, img, _ = split_map(await ops.handle(f"map\t49.40\t8.69\t{radius}\t128\t12".encode()))
+        spans.append(float(h[9]) - float(h[7]))
+    assert spans[0] < spans[1] < spans[2]
+    assert abs(spans[2] / spans[1] - 5) < 0.2                          # stufenlos skaliert, nicht auf Zoomstufen gerastet
+
+    # Marker: roter Punkt an der Markposition (nordöstlich der Mitte), keine Fadenkreuz-Mitte
+    h, img, _ = split_map(await ops.handle(b"map\t49.40\t8.69\t500\t128\t24\t49.4020\t8.6930"))
+    im = Image.open(io.BytesIO(img)).convert("RGB")
+    reds = [(x, y) for x in range(128) for y in range(128) if im.getpixel((x, y))[0] > 190 and im.getpixel((x, y))[1] < 90]
+    assert reds, "Marker fehlt"
+    mx = sum(x for x, _ in reds) / len(reds)
+    my = sum(y for _, y in reds) / len(reds)
+    assert mx > 64 and my < 64                                         # rechts (Osten) und oben (Norden) von der Mitte
 
 
 async def test_map_outside_coverage_and_bad_input(storage):
     ops = NomadOps(None, storage)
-    head, _ = parse(await ops.handle(b"map\t10.0\t10.0\t14\t160\t12"))
+    head, _ = parse(await ops.handle(b"map\t10.0\t10.0\t500\t160\t12"))
     assert head[0] == "error" and "keine karte" in head[1].lower()
-    head, _ = parse(await ops.handle(b"map\t95\t10\t14\t160\t12"))
-    assert head[0] == "error"
+    for bad in (b"map\t95\t10\t500\t160\t12", b"map\t49.4\t8.7\t10\t160\t12", b"map\t49.4\t8.7\t999999\t160\t12"):
+        head, _ = parse(await ops.handle(bad))
+        assert head[0] == "error", bad
 
 
 # ------------------------------------------------------------ Gateway + Bridge
@@ -167,7 +211,7 @@ async def test_gateway_nomad_endpoint(kiwix, storage):
         assert (await c.post("/lk/nomad", data=b"books")).status == 401
         r = await c.post("/lk/nomad", headers=H, data=b"books")
         assert r.status == 200 and (await r.read()).startswith(b"ok\tbooks")
-        r = await c.post("/lk/nomad", headers=H, data=b"map\t49.40\t8.69\t14\t96\t8")
+        r = await c.post("/lk/nomad", headers=H, data=b"map\t49.40\t8.69\t500\t96\t8")
         assert (await r.read()).split(b"\n", 1)[0].startswith(b"ok\tmap")
     finally:
         await c.close()

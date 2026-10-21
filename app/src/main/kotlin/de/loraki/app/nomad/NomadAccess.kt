@@ -84,7 +84,10 @@ class NomadAccess(private val settings: Settings, private val engine: Engine, pr
 }
 
 data class ArticleView(val book: String, val path: String, val title: String, val text: String, val total: Int, val summary: Boolean)
-data class MapView(val request: Triple<Double, Double, Int>, val quality: NomadRequest.MapQuality, val section: NomadRequest.MapSection, val bitmap: Bitmap)
+data class MapRequestInfo(val lat: Double, val lon: Double, val radius: NomadRequest.MapRadius, val quality: NomadRequest.MapQuality)
+data class MapView(val request: MapRequestInfo, val section: NomadRequest.MapSection, val bitmap: Bitmap)
+enum class PositionSource(val label: String) { NODE("Node-GPS"), PHONE("Handy-GPS"), MANUAL("Manuell") }
+data class UserPosition(val lat: Double, val lon: Double, val source: PositionSource)
 
 /** Zustand der gezielten NOMAD-Anfragen (Wiki, Karte). Alles nur im Arbeitsspeicher. */
 class NomadLookupViewModel(app: Application) : AndroidViewModel(app) {
@@ -103,8 +106,6 @@ class NomadLookupViewModel(app: Application) : AndroidViewModel(app) {
     val regions = MutableStateFlow<List<NomadRequest.MapRegion>>(emptyList())
     val map = MutableStateFlow<MapView?>(null)
     val quality = MutableStateFlow(NomadRequest.MapQuality.MEDIUM)
-    val zoom = MutableStateFlow(14)
-    private val mapCache = object : LinkedHashMap<String, MapView>(8, 0.75f, true) { override fun removeEldestEntry(e: MutableMap.MutableEntry<String, MapView>?) = size > 6 }
 
     private fun run(block: suspend () -> Unit) = viewModelScope.launch {
         busy.value = true; error.value = null
@@ -143,36 +144,72 @@ class NomadLookupViewModel(app: Application) : AndroidViewModel(app) {
     fun summarize() { val cur = article.value ?: return; openArticle(NomadRequest.Hit(cur.path, cur.title), summary = true) }
 
     // ---- Karte
+    val position = MutableStateFlow<UserPosition?>(null)
+    val source = MutableStateFlow(PositionSource.NODE)
+    val radius = MutableStateFlow(NomadRequest.MapRadius.R1K)
+    /** Per Antippen gewählter Punkt (Ziel einer Detailkarte). */
+    val target = MutableStateFlow<Pair<Double, Double>?>(null)
+    private val history = ArrayDeque<MapView>()
+    val canGoBack = MutableStateFlow(false)
+    private val mapCache = object : LinkedHashMap<String, MapView>(8, 0.75f, true) { override fun removeEldestEntry(e: MutableMap.MutableEntry<String, MapView>?) = size > 8 }
+
     fun loadRegions() = run { regions.value = NomadRequest.parseMapInfo(access.request(NomadRequest.mapInfo())) }
 
-    fun requestMap(lat: Double, lon: Double, z: Int = zoom.value, q: NomadRequest.MapQuality = quality.value) = run {
-        val key = "%.4f,%.4f,%d,%s".format(java.util.Locale.ROOT, lat, lon, z, q.name)
-        mapCache[key]?.let { map.value = it; return@run }
-        val sec = NomadRequest.parseMap(access.request(NomadRequest.map(lat, lon, z, q)))
-        val bmp = BitmapFactory.decodeByteArray(sec.image, 0, sec.image.size) ?: throw IOException("Kartenbild nicht lesbar")
-        zoom.value = sec.zoom
-        val v = MapView(Triple(lat, lon, sec.zoom), q, sec, bmp)
-        mapCache[key] = v
-        map.value = v
+    /** Position vom Node (GPS am Node) holen: der Node wird neu abgefragt, damit die Position aktuell ist. */
+    fun positionFromNode() = run {
+        val si = g.session.refreshSelfInfo() ?: g.session.selfInfo.value
+        val la = si?.latitude; val lo = si?.longitude
+        if (la == null || lo == null) throw IOException("Der Node meldet keine Position – GPS am Node einschalten/Fix abwarten, oder Handy-GPS bzw. manuelle Eingabe nutzen")
+        position.value = UserPosition(la, lo, PositionSource.NODE)
     }
 
-    /** Verschiebt den Ausschnitt um [fraction] Bildbreiten und fordert ihn an. */
+    fun setPosition(lat: Double, lon: Double, src: PositionSource) { position.value = UserPosition(lat, lon, src) }
+    fun setSource(s: PositionSource) { source.value = s }
+    fun setRadius(r: NomadRequest.MapRadius) { radius.value = r }
+    fun selectTarget(lat: Double, lon: Double) { target.value = lat to lon }
+
+    /** Eigene Position wird (falls bekannt) immer als Punkt eingezeichnet, auch in Detailkarten. */
+    private fun mark() = position.value?.let { it.lat to it.lon }
+
+    fun requestMap(lat: Double, lon: Double, r: NomadRequest.MapRadius = radius.value, q: NomadRequest.MapQuality = quality.value) = run {
+        val info = MapRequestInfo(lat, lon, r, q)
+        val key = "%.4f,%.4f,%d,%s,%s".format(java.util.Locale.ROOT, lat, lon, r.meters, q.name, mark()?.let { "%.4f,%.4f".format(java.util.Locale.ROOT, it.first, it.second) } ?: "-")
+        val view = mapCache[key] ?: kotlin.run {
+            val sec = NomadRequest.parseMap(access.request(NomadRequest.map(lat, lon, r.meters, q, mark())))
+            val bmp = BitmapFactory.decodeByteArray(sec.image, 0, sec.image.size) ?: throw IOException("Kartenbild nicht lesbar")
+            MapView(info, sec, bmp).also { mapCache[key] = it }
+        }
+        map.value?.let { history.addLast(it) }
+        while (history.size > 6) history.removeFirst()
+        canGoBack.value = history.isNotEmpty()
+        radius.value = r
+        target.value = null
+        map.value = view
+    }
+
+    /** Detailkarte um den angetippten Punkt oder einen Ort aus der Liste, mit nächstkleinerem Radius. */
+    fun detailAt(lat: Double, lon: Double) = requestMap(lat, lon, (map.value?.request?.radius ?: radius.value).finer())
+
+    fun back() { val prev = history.removeLastOrNull() ?: return; map.value = prev; radius.value = prev.request.radius; target.value = null; canGoBack.value = history.isNotEmpty() }
+
+    /** Verschiebt den Ausschnitt um [dx]/[dy] Radien (Ost/Nord positiv) und fordert ihn an. */
     fun pan(dx: Double, dy: Double) {
         val m = map.value ?: return
-        val meters = m.section.size * m.section.metersPerPixel * 0.6
-        val (lat, lon) = NomadRequest.pan(m.request.first, m.request.second, dx * meters, dy * meters)
-        requestMap(lat, lon, m.request.third)
+        val r = m.request.radius.meters * 0.8
+        val (lat, lon) = NomadRequest.pan(m.request.lat, m.request.lon, dx * r, dy * r)
+        requestMap(lat, lon, m.request.radius)
     }
 
-    fun zoomBy(delta: Int) {
+    fun radiusBy(delta: Int) {
         val m = map.value ?: return
-        requestMap(m.request.first, m.request.second, (m.request.third + delta).coerceIn(3, 17))
+        val i = (m.request.radius.ordinal + delta).coerceIn(0, NomadRequest.MapRadius.entries.size - 1)
+        requestMap(m.request.lat, m.request.lon, NomadRequest.MapRadius.entries[i])
     }
 
     fun setQuality(q: NomadRequest.MapQuality) { quality.value = q }
 
     /** Alles Angezeigte verwerfen (z. B. beim Verlassen). */
-    fun clear() { hits.value = emptyList(); article.value = null; map.value = null; mapCache.clear(); error.value = null }
+    fun clear() { hits.value = emptyList(); article.value = null; map.value = null; mapCache.clear(); history.clear(); canGoBack.value = false; target.value = null; position.value = null; error.value = null }
 
     override fun onCleared() = clear()
 }

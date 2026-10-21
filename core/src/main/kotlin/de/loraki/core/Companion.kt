@@ -43,6 +43,8 @@ object Companion {
         data class SelfInfo(
             val txPowerDbm: Int, val maxTxPowerDbm: Int, val publicKey: ByteArray,
             val radio: RadioParams, val name: String,
+            /** Vom Node gemeldete Position (GPS am Node bzw. eingestellte Position); null, wenn 0/0 oder nicht gesetzt. */
+            val latitude: Double? = null, val longitude: Double? = null,
         ) : Incoming()
         data class MsgSent(val expectedAck: ByteArray, val suggestedTimeoutMs: Long) : Incoming()
         data class TextMsg(val pubKeyPrefixHex: String, val text: String, val snr: Double?) : Incoming()
@@ -82,13 +84,16 @@ object Companion {
                     val tx = b.get().toInt() and 0xFF
                     val maxTx = b.get().toInt() and 0xFF
                     val key = ByteArray(32).also { b.get(it) }
-                    b.position(b.position() + 8 + 4) // lat, lon, multi_acks, loc_policy, telemetry, manual_add
+                    val latE6 = b.int; val lonE6 = b.int
+                    b.position(b.position() + 4) // multi_acks, loc_policy, telemetry, manual_add
                     val freq = (b.int.toLong() and 0xFFFFFFFFL) / 1000.0
                     val bw = (b.int.toLong() and 0xFFFFFFFFL) / 1000.0
                     val sf = b.get().toInt() and 0xFF
                     val cr = b.get().toInt() and 0xFF
                     val name = String(ByteArray(b.remaining()).also { b.get(it) }, Charsets.UTF_8)
-                    Incoming.SelfInfo(tx, maxTx, key, RadioParams(freq, bw, sf, cr, txPowerDbm = tx), name)
+                    val hasPos = (latE6 != 0 || lonE6 != 0) && Math.abs(latE6) <= 90_000_000 && Math.abs(lonE6) <= 180_000_000
+                    Incoming.SelfInfo(tx, maxTx, key, RadioParams(freq, bw, sf, cr, txPowerDbm = tx), name,
+                        if (hasPos) latE6 / 1e6 else null, if (hasPos) lonE6 / 1e6 else null)
                 }
                 6 -> {
                     b.get() // type

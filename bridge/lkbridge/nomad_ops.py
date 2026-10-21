@@ -8,7 +8,7 @@ Anfrage (UTF-8, Tab-getrennt):
   search   <buch> <suchtext> <max>
   article  <buch> <pfad> <offset> <länge> <modus>        modus: text | summary
   mapinfo
-  map      <lat> <lon> <zoom> <größe> <farben>
+  map      <lat> <lon> <radius_m> <größe> <farben> [<markbreite> <marklänge>]
 Antwort: erste Zeile = Kopf (``ok\\t<art>\\t…`` oder ``error\\t<meldung>``), danach der Inhalt (Text oder Bild).
 """
 from __future__ import annotations
@@ -151,11 +151,11 @@ class NomadOps:
             raise LookupError("Kein NOMAD-Speicher konfiguriert ([nomad] storage)")
         return map_render.list_regions(self.storage / "maps" / "pmtiles")
 
-    def map_sync(self, lat: float, lon: float, zoom: int, size: int, colors: int):
+    def map_sync(self, lat: float, lon: float, radius_m: float, size: int, colors: int, mark: tuple[float, float] | None = None):
         regions = self.mapinfo_sync()
         if not regions:
             raise LookupError("Keine Karten auf dem Server")
-        return map_render.render(regions, lat, lon, zoom, size, colors)
+        return map_render.render(regions, lat, lon, radius_m, size, colors, mark=mark)
 
     # ------------------------------------------------------------ Anfrage-Behandlung
     async def handle(self, payload: bytes) -> bytes:
@@ -189,14 +189,20 @@ class NomadOps:
                 rows = "\n".join(f"{r.name}\t{r.min_lon:.4f}\t{r.min_lat:.4f}\t{r.max_lon:.4f}\t{r.max_lat:.4f}\t{r.max_zoom}" for r in regs)
                 return ("ok\tmapinfo\n" + rows).encode()
             if op == "map":
-                lat, lon, zoom, size = float(a[0]), float(a[1]), int(a[2]), int(a[3])
+                lat, lon, radius, size = float(a[0]), float(a[1]), float(a[2]), int(a[3])
                 colors = int(a[4]) if len(a) > 4 else 12
+                mark = (float(a[5]), float(a[6])) if len(a) > 6 else None
                 if not (-85 <= lat <= 85 and -180 <= lon <= 180):
                     raise ValueError("Koordinaten außerhalb des gültigen Bereichs")
-                img, meta = await asyncio.to_thread(self.map_sync, lat, lon, zoom, size, colors)
+                if not (50 <= radius <= 200_000):
+                    raise ValueError("Radius muss zwischen 50 m und 200 km liegen")
+                img, meta = await asyncio.to_thread(self.map_sync, lat, lon, radius, size, colors, mark)
                 fmt = "webp" if img[:4] == b"RIFF" else "png"
-                head = "ok\tmap\t{fmt}\t{region}\t{zoom}\t{size}\t{min_lon:.5f}\t{min_lat:.5f}\t{max_lon:.5f}\t{max_lat:.5f}\t{m_per_px}".format(fmt=fmt, **meta)
-                return head.encode() + b"\n" + img
+                head = "ok\tmap\t{fmt}\t{region}\t{zoom}\t{size}\t{min_lon:.5f}\t{min_lat:.5f}\t{max_lon:.5f}\t{max_lat:.5f}\t{m_per_px}\t{n}".format(
+                    fmt=fmt, n=len(img), **{k: v for k, v in meta.items() if k != "places"})
+                # Orte im Ausschnitt (für Detailkarten): Name, Breite, Länge, Art
+                places = "\n".join(f"{p['name']}\t{p['lat']:.4f}\t{p['lon']:.4f}\t{p['kind']}" for p in meta["places"])
+                return head.encode() + b"\n" + img + places.encode()
             raise ValueError(f"Unbekannte Anfrage: {op}")
         except (LookupError, ValueError, IndexError) as e:
             return f"error\t{e}".encode()

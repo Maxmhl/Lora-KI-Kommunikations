@@ -134,6 +134,14 @@ class MeshSession(ctx: Context, private val scope: CoroutineScope) {
         }
     }
 
+    /** Fragt den Node erneut nach seinen Daten – liefert u. a. die aktuelle Node-GPS-Position. */
+    suspend fun refreshSelfInfo(): Incoming.SelfInfo? {
+        if (_state.value != LinkState.READY) return selfInfo.value
+        val si = request(Companion.appStart()) as? Incoming.SelfInfo
+        if (si != null) selfInfo.value = si
+        return si
+    }
+
     suspend fun sendAdvert(flood: Boolean = true) {
         request(Companion.sendSelfAdvert(flood))
     }

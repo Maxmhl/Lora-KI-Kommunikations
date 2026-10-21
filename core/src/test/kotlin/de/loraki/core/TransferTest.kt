@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -133,7 +134,7 @@ class CompanionTest {
 
     @Test fun parseSelfInfo() {
         val bb = java.nio.ByteBuffer.allocate(1 + 3 + 32 + 8 + 4 + 8 + 2 + 4).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        bb.put(5).put(1).put(14).put(22).put(ByteArray(32)).putInt(0).putInt(0).put(ByteArray(4))
+        bb.put(5).put(1).put(14).put(22).put(ByteArray(32)).putInt(49_407_500).putInt(8_693_500).put(ByteArray(4))
         bb.putInt(869618).putInt(62500).put(8).put(8).put("Test".toByteArray())
         val s = Companion.parse(bb.array()) as Companion.Incoming.SelfInfo
         assertEquals(869.618, s.radio.freqMhz, 1e-9)
@@ -141,5 +142,15 @@ class CompanionTest {
         assertEquals(8, s.radio.sf)
         assertEquals(14, s.txPowerDbm)
         assertEquals("Test", s.name)
+        assertEquals(49.4075, s.latitude!!, 1e-9)       // Node-GPS
+        assertEquals(8.6935, s.longitude!!, 1e-9)
+    }
+
+    @Test fun selfInfoWithoutPositionHasNull() {
+        val bb = java.nio.ByteBuffer.allocate(1 + 3 + 32 + 8 + 4 + 8 + 2 + 4).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        bb.put(5).put(1).put(14).put(22).put(ByteArray(32)).putInt(0).putInt(0).put(ByteArray(4))
+        bb.putInt(869618).putInt(62500).put(8).put(8).put("Test".toByteArray())
+        val s = Companion.parse(bb.array()) as Companion.Incoming.SelfInfo
+        assertNull(s.latitude); assertNull(s.longitude)
     }
 }
