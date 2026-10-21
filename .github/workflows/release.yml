@@ -1,0 +1,36 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (z. B. 0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r bridge/requirements-dev.txt && cd bridge && python -m pytest -q
+      - run: ./gradlew :core:test :app:assembleDebug
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+      - name: Release erstellen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk lora-ki-${{ inputs.version }}-debug.apk
+          (cd bridge && zip -qr ../lkbridge-${{ inputs.version }}.zip lkbridge config.example.toml requirements.txt)
+          gh release create "v${{ inputs.version }}" \
+            lora-ki-${{ inputs.version }}-debug.apk lkbridge-${{ inputs.version }}.zip \
+            --target "${{ github.sha }}" \
+            --title "LoRa-KI v${{ inputs.version }}" \
+            --notes "Erste lauffähige Fassung: Android-App (Debug-signierte APK), Bridge für den Server-Node und Protokoll (LKP v1). Nicht auf echter Hardware getestet – siehe README."
