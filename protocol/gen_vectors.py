@@ -61,7 +61,8 @@ v = {
                   "kinds": {"text": codec.KIND_TEXT, "image": codec.KIND_IMAGE, "file": codec.KIND_FILE,
                             "reply": codec.KIND_REPLY, "status": codec.KIND_STATUS, "reset": codec.KIND_RESET,
                             "model_list_req": codec.KIND_MODEL_LIST_REQ, "model_list": codec.KIND_MODEL_LIST,
-                            "set_model": codec.KIND_SET_MODEL}},
+                            "set_model": codec.KIND_SET_MODEL, "set_opts": codec.KIND_SET_OPTS,
+                            "nomad_req": codec.KIND_NOMAD_REQ, "nomad_resp": codec.KIND_NOMAD_RESP}},
 }
 out = Path(__file__).with_name("test-vectors.json")
 out.write_text(json.dumps(v, indent=1, ensure_ascii=False) + "\n")

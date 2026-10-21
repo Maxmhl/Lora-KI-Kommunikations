@@ -154,3 +154,55 @@ async def test_plain_text_message_supported():
     await b.on_text(PEER, "Hallo KI")
     await settle()
     assert llm.calls[0][0][-1]["content"] == "Hallo KI"
+
+
+class FakeOps:
+    def __init__(self):
+        self.seen = []
+
+    async def handle(self, payload: bytes) -> bytes:
+        self.seen.append(payload)
+        return b"ok\tbooks\nwiki\tWikipedia\teng\t5"
+
+
+def collect_reply(tr):
+    from lkbridge.transfer import Receiver
+    rx, env = Receiver(), None
+    for t in tr.out:
+        f = codec.parse_frame(t)
+        if f.type in (codec.T_DATA, codec.T_POLL):
+            _, e = rx.on_frame("srv", f)
+            env = e or env
+    return codec.parse_envelope(env)
+
+
+async def test_nomad_request_gets_response_with_same_request_number():
+    b, tr, llm = make()
+    b.ops = FakeOps()
+    await feed(b, codec.build_envelope(codec.KIND_NOMAD_REQ, 42, b"books"))
+    await settle()
+    e = collect_reply(tr)
+    assert (e.kind, e.conv) == (codec.KIND_NOMAD_RESP, 42) and e.payload.startswith(b"ok\tbooks")
+    assert b.ops.seen == [b"books"]
+
+
+async def test_nomad_request_without_ops_returns_error():
+    b, tr, llm = make()
+    await feed(b, codec.build_envelope(codec.KIND_NOMAD_REQ, 3, b"books"))
+    await settle()
+    assert collect_reply(tr).payload.startswith(b"error\t")
+
+
+async def test_kb_option_selects_knowledge_client_per_conversation():
+    b, tr, llm = make()
+    kb = FakeLLM()
+    b.kb_llm = kb
+    await feed(b, codec.build_envelope(codec.KIND_SET_OPTS, 5, b"kb=1"))
+    await settle()
+    await b._answer(PEER, 5, "Frage", [])
+    await b._answer(PEER, 6, "Frage", [])
+    assert len(kb.calls) == 1 and len(llm.calls) == 1            # conv 5 -> NOMAD-KB, conv 6 -> Ollama direkt
+    await feed(b, codec.build_envelope(codec.KIND_SET_OPTS, 5, b"kb=0"), 2)
+    await settle()
+    await b._answer(PEER, 5, "nochmal", [])
+    assert len(kb.calls) == 1 and len(llm.calls) == 2

@@ -38,7 +38,8 @@ allow_all = false
 [nomad]
 url = "http://127.0.0.1:8080"        # NOMAD Command Center
 storage = "/opt/project-nomad/storage"
-knowledge_base = false               # true: LoRa-Chat nutzt NOMADs Wissensdatenbank (RAG) statt reinem Ollama
+kiwix_url = "http://127.0.0.1:8090"  # NOMADs Bibliothek (Kiwix) für Artikel-Anfragen
+knowledge_base = false               # Standard für LoRa-Chats: NOMADs Wissensdatenbank (RAG) nutzen (in der App je Chat umschaltbar)
 
 # Gateway: EINE abgesicherte Schnittstelle für die App (WLAN/VPN, nicht LoRa)
 #  - zeigt in der App dieselbe NOMAD-Oberfläche wie der Browser (NOMAD selbst hat keine Anmeldung -> Token davor)

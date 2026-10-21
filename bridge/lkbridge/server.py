@@ -22,8 +22,10 @@ DEFAULT_SYSTEM = (
 
 
 class Bridge:
-    def __init__(self, cfg: dict, transport, llm: OllamaClient, sender: Sender, receiver: Receiver):
+    def __init__(self, cfg: dict, transport, llm: OllamaClient, sender: Sender, receiver: Receiver, ops=None, kb_llm=None):
         self.cfg, self.transport, self.llm = cfg, transport, llm
+        self.ops, self.kb_llm = ops, kb_llm
+        self.kb_default = bool(cfg.get("nomad", {}).get("knowledge_base", False))
         self.sender, self.receiver = sender, receiver
         acc = cfg.get("access", {})
         self.allowed = [p.lower() for p in acc.get("allowed_peers", [])]
@@ -35,7 +37,9 @@ class Bridge:
         self.allowed_models = lcfg.get("models") or []  # leer = alle von Ollama gemeldeten
         self.default_model = lcfg.get("model")
         self._models_file = Path(cfg.get("model_state_file", "models-state.json"))
-        self.conv_models: dict[str, str] = self._load_models()
+        self.conv_models: dict[str, str]
+        self.conv_kb: dict[str, bool]
+        self.conv_models, self.conv_kb = self._load_state()
         self._model_cache: tuple[float, list[tuple[str, bool]]] | None = None
         self.max_ctx_chars = int(cfg.get("limits", {}).get("max_context_chars", 12000))
         self.history: dict[tuple[str, int], list[dict]] = {}
@@ -45,17 +49,20 @@ class Bridge:
         self._worker: asyncio.Task | None = None
 
     # ------------------------------------------------------------ Modelle
-    def _load_models(self) -> dict[str, str]:
+    def _load_state(self) -> tuple[dict[str, str], dict[str, bool]]:
         try:
-            return json.loads(self._models_file.read_text())
+            d = json.loads(self._models_file.read_text())
         except (OSError, ValueError):
-            return {}
+            return {}, {}
+        if "models" in d or "kb" in d:
+            return dict(d.get("models", {})), dict(d.get("kb", {}))
+        return d, {}  # älteres Format: nur Modelle
 
     def _save_models(self) -> None:
         try:
-            self._models_file.write_text(json.dumps(self.conv_models))
+            self._models_file.write_text(json.dumps({"models": self.conv_models, "kb": self.conv_kb}))
         except OSError as e:
-            log.warning("Modellauswahl nicht speicherbar: %s", e)
+            log.warning("Auswahl nicht speicherbar: %s", e)
 
     async def available_models(self) -> list[tuple[str, bool]]:
         now = time.time()
@@ -126,6 +133,10 @@ class Bridge:
             lst.append((env.kind, name, mime, data, time.time()))
         elif env.kind == codec.KIND_MODEL_LIST_REQ:
             await self.jobs.put(("models", peer, env.conv))
+        elif env.kind == codec.KIND_SET_OPTS:
+            await self.jobs.put(("setopts", peer, env.conv, env.payload.decode("utf-8", "replace")))
+        elif env.kind == codec.KIND_NOMAD_REQ:
+            await self.jobs.put(("nomad", peer, env.conv, env.payload))
         elif env.kind == codec.KIND_SET_MODEL:
             await self.jobs.put(("setmodel", peer, env.conv, env.payload.decode("utf-8", "replace").strip()))
         elif env.kind == codec.KIND_RESET:
@@ -146,6 +157,17 @@ class Bridge:
                     await self._reply(peer, conv, codec.KIND_MODEL_LIST, lines)
                 elif kind == "setmodel":
                     await self._set_model(peer, conv, job[3])
+                elif kind == "setopts":
+                    opts = dict(kv.split("=", 1) for kv in job[3].split(";") if "=" in kv)
+                    if "kb" in opts:
+                        self.conv_kb[self._mkey(peer, conv)] = opts["kb"] == "1"
+                        self._save_models()
+                elif kind == "nomad":
+                    if self.ops is None:
+                        resp = b"error\tNOMAD ist auf dem Server nicht konfiguriert"
+                    else:
+                        resp = await self.ops.handle(job[3])
+                    await self._reply_bytes(peer, conv, codec.KIND_NOMAD_RESP, resp)
             except Exception as e:
                 log.exception("Fehler bei %s", kind)
                 await self._reply(peer, conv, codec.KIND_STATUS, f"Fehler auf dem Server: {e}")
@@ -189,7 +211,8 @@ class Bridge:
             if model is None:
                 images = []
                 notes.append(f"[Bild ignoriert: Modell '{chosen}' versteht keine Bilder und es ist kein vision_model konfiguriert]")
-        answer = await self.llm.chat(msgs, model=model, images=images or None)
+        use_kb = self.conv_kb.get(self._mkey(peer, conv), self.kb_default) and self.kb_llm is not None
+        answer = await (self.kb_llm if use_kb else self.llm).chat(msgs, model=model, images=images or None)
         hist += [{"role": "user", "content": prompt}, {"role": "assistant", "content": answer}]
         del hist[: -2 * self.history_turns]
         return ("\n".join(notes) + "\n" + answer).strip() if notes else answer
@@ -201,7 +224,10 @@ class Bridge:
         return n
 
     async def _reply(self, peer: str, conv: int, kind: int, text: str) -> None:
-        env = codec.build_envelope(kind, conv, text.encode())
+        await self._reply_bytes(peer, conv, kind, text.encode())
+
+    async def _reply_bytes(self, peer: str, conv: int, kind: int, payload: bytes) -> None:
+        env = codec.build_envelope(kind, conv, payload)
         ok = await self.sender.send(peer, self._next_id(peer), env)
         if not ok:
             log.error("Antwort an %s nicht zugestellt", peer)

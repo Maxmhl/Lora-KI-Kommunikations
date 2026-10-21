@@ -71,7 +71,15 @@ class NomadKnowledgeClient:
         body = json.dumps({"model": model, "messages": messages, "stream": False}).encode()
         req = urllib.request.Request(self.nomad_url + "/api/ollama/chat", body, {"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=self.timeout_s) as r:
-            return json.load(r)["message"]["content"].strip()
+            data = json.load(r)
+        text = data["message"]["content"].strip()
+        titles = []
+        for src in data.get("sources") or []:
+            t = (src.get("title") or "").strip()[:40]
+            if t and t not in titles:
+                titles.append(t)
+        # Quellen kompakt anhängen (jedes Zeichen kostet Funkzeit)
+        return text + ("\n\nQuellen: " + "; ".join(titles[:3]) if titles else "")
 
     async def chat(self, messages: list[dict], model: str | None = None, images: list[bytes] | None = None) -> str:
         if images:

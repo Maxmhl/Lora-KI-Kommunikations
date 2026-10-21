@@ -35,6 +35,9 @@ object Lkp {
     const val KIND_MODEL_LIST_REQ = 7
     const val KIND_MODEL_LIST = 8
     const val KIND_SET_MODEL = 9
+    const val KIND_SET_OPTS = 10
+    const val KIND_NOMAD_REQ = 11
+    const val KIND_NOMAD_RESP = 12
 
     private const val FLAG_DEFLATE = 0x02
     private const val FLAG_DICT = 0x04

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"
+     xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Search: feathers</title>
+    <link>/search?pattern=feathers&amp;content=wikipedia_en_100_mini_2026-01&amp;format=xml&amp;start=0&amp;pageLength=3</link>
+    <description>Search result for feathers</description>
+    <opensearch:totalResults>4</opensearch:totalResults>
+    <opensearch:startIndex>0</opensearch:startIndex>
+    <opensearch:itemsPerPage>3</opensearch:itemsPerPage>
+    <atom:link rel="search" type="application/opensearchdescription+xml" href="/search/searchdescription.xml"/>
+    <opensearch:Query role="request"
+      searchTerms="feathers"
+      startIndex="0"
+      count="3"
+    />
+    <item>
+      <title>Bird</title>
+      <link>/content/wikipedia_en_100_mini_2026-01/Bird</link>
+        <description>...of eggs, meat, and feathers. Songbirds, parrots, and other species are popular as pets. Guano (bird excrement) is harvested for use as a fertiliser. Birds figure throughout human culture. About 120 to 130 species have become extinct due to human activity since the 17th century, and hundreds more before then. Human activity threatens about 1,200 bird species with extinction, though efforts are underway to protect them. Recreational birdwatching is an important part of the ecotourism industry....</description>
+        <book>
+          <title>Wikipedia 100</title>
+        </book>
+        <wordCount>529</wordCount>
+    </item>
+    <item>
+      <title>Emu</title>
+      <link>/content/wikipedia_en_100_mini_2026-01/Emu</link>
+        <description>...-concern species by the International Union for Conservation of Nature. Despite this, some local populations are listed as endangered, with all the insular subspecies going extinct by the 1800s. Threats to their survival include egg predation by other animals (especially invasive species), roadkills and habitat fragmentation. The emu is an important cultural icon of Australia, appearing on the coat of arms and various coinages. The bird features prominently in Indigenous Australian mythologies....</description>
+        <book>
+          <title>Wikipedia 100</title>
+        </book>
+        <wordCount>435</wordCount>
+    </item>
+    <item>
+      <title>Dinosaur</title>
+      <link>/content/wikipedia_en_100_mini_2026-01/Dinosaur</link>
+        <description>...fossil dinosaur skeletons have been major attractions at museums worldwide, and dinosaurs have become an enduring part of popular culture. The large sizes of some dinosaurs, as well as their seemingly monstrous and fantastic nature, have ensured their regular appearance in best-selling books and films, such as the Jurassic Park franchise. Persistent public enthusiasm for the animals has resulted in significant funding for dinosaur science, and new discoveries are regularly covered by the media....</description>
+        <book>
+          <title>Wikipedia 100</title>
+        </book>
+        <wordCount>550</wordCount>
+    </item>
+  </channel>
+</rss>

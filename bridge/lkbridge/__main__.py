@@ -8,6 +8,7 @@ from .airtime import RadioParams, dbm_to_mw, subband_limits
 from .limiter import DutyCycleLimiter
 from .gateway import Gateway
 from .llm import NomadKnowledgeClient, OllamaClient
+from .nomad_ops import NomadOps
 from .nomad_sync import DEFAULT_EXCLUDE, Catalog
 from .mc_transport import MeshCoreTransport
 from .server import Bridge
@@ -46,18 +47,16 @@ async def run(cfg: dict) -> None:
     llm = OllamaClient(lc.get("base_url", "http://127.0.0.1:11434"), lc.get("model", "llama3.1"),
                        int(lc.get("num_predict", 400)))
     nc = cfg.get("nomad", {})
-    chat_llm = llm
-    if nc.get("knowledge_base") and nc.get("url"):
-        chat_llm = NomadKnowledgeClient(llm, nc["url"])
-        log.info("Chat nutzt die NOMAD-Wissensdatenbank (%s)", nc["url"])
+    kb_llm = NomadKnowledgeClient(llm, nc["url"]) if nc.get("url") else None
+    ops = NomadOps(nc.get("kiwix_url", "http://127.0.0.1:8090"), nc.get("storage", "/opt/project-nomad/storage"), llm)
     receiver = Receiver(int(cfg.get("limits", {}).get("max_object_bytes", 200_000)))
-    Bridge(cfg, tr, chat_llm, sender, receiver).start()
+    Bridge(cfg, tr, llm, sender, receiver, ops=ops, kb_llm=kb_llm).start()
 
     gc = cfg.get("gateway", {})
     if gc.get("enabled"):
         catalog = Catalog(nc.get("storage", "/opt/project-nomad/storage"), gc.get("exclude", DEFAULT_EXCLUDE),
                           int(float(gc["max_file_gb"]) * 1024**3) if gc.get("max_file_gb") else None)
-        gw = Gateway(catalog, gc.get("token", ""), nc.get("url"), gc.get("host", "0.0.0.0"), int(gc.get("port", 8765)))
+        gw = Gateway(catalog, gc.get("token", ""), nc.get("url"), gc.get("host", "0.0.0.0"), int(gc.get("port", 8765)), ops)
         await gw.start()
     await asyncio.Event().wait()
 

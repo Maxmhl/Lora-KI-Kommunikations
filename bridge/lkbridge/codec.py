@@ -39,6 +39,9 @@ KIND_RESET = 6
 KIND_MODEL_LIST_REQ = 7  # App -> Server: verfügbare Modelle anfordern (leere Nutzlast)
 KIND_MODEL_LIST = 8  # Server -> App: Zeilen 'name\tflags' (flags: v = Bildverständnis)
 KIND_SET_MODEL = 9  # App -> Server: Modellname für diese conv (leer = Server-Standard)
+KIND_SET_OPTS = 10  # App -> Server: Optionen für diese conv, 'kb=1;…' (kb = NOMAD-Wissensdatenbank nutzen)
+KIND_NOMAD_REQ = 11  # App -> Server: gezielte NOMAD-Anfrage (Artikel, Kartenausschnitt, …), conv = Anfrage-Nr.
+KIND_NOMAD_RESP = 12  # Server -> App: Antwort darauf (Kopfzeile + Inhalt), conv = Anfrage-Nr.
 
 FLAG_DEFLATE = 0x02  # rohes Deflate (ohne zlib-Header)
 FLAG_DICT = 0x04  # zusätzlich mit eingebautem Wörterbuch (dictionary.txt)

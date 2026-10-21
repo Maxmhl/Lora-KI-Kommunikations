@@ -48,7 +48,7 @@ def _token_ok(request: web.Request, token: str) -> bool:
     return any(c and hmac.compare_digest(c, token) for c in cands)
 
 
-def build_app(catalog: Catalog, token: str, upstream: str | None) -> web.Application:
+def build_app(catalog: Catalog, token: str, upstream: str | None, ops=None) -> web.Application:
     if len(token) < 16:
         raise ValueError("gateway.token muss mindestens 16 Zeichen lang sein")
 
@@ -70,6 +70,13 @@ def build_app(catalog: Catalog, token: str, upstream: str | None) -> web.Applica
     async def manifest(_):
         return web.json_response({"version": 1, "server_time": int(time.time()),
                                   "nomad": bool(upstream), "items": [i.to_json() for i in catalog.items()]})
+
+    async def nomad(request: web.Request):
+        """Gezielte Anfragen im selben Format wie über LoRa (siehe nomad_ops.py) – im WLAN nur schneller."""
+        if ops is None:
+            return web.json_response({"error": "NOMAD-Funktionen nicht konfiguriert"}, status=503)
+        resp = await ops.handle(await request.read())
+        return web.Response(body=resp, content_type="application/octet-stream")
 
     async def file(request: web.Request):
         item = catalog.get(request.match_info["id"])
@@ -158,6 +165,7 @@ def build_app(catalog: Catalog, token: str, upstream: str | None) -> web.Applica
     app = web.Application(middlewares=[auth], client_max_size=64 * 1024 * 1024)
     app.router.add_get("/lk/ping", ping)
     app.router.add_get("/lk/manifest", manifest)
+    app.router.add_post("/lk/nomad", nomad)
     app.router.add_route("*", r"/lk/files/{id:.+}", file)
     app.router.add_route("*", "/{tail:.*}", proxy)
     app.on_startup.append(on_startup)
@@ -166,8 +174,8 @@ def build_app(catalog: Catalog, token: str, upstream: str | None) -> web.Applica
 
 
 class Gateway:
-    def __init__(self, catalog: Catalog, token: str, upstream: str | None, host: str = "0.0.0.0", port: int = 8765):
-        self.app = build_app(catalog, token, upstream)
+    def __init__(self, catalog: Catalog, token: str, upstream: str | None, host: str = "0.0.0.0", port: int = 8765, ops=None):
+        self.app = build_app(catalog, token, upstream, ops)
         self.host, self.port = host, port
         self._runner: web.AppRunner | None = None
 

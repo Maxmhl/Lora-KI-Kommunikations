@@ -127,5 +127,8 @@ class VectorTest {
         assertEquals(k.getInt("model_list_req"), Lkp.KIND_MODEL_LIST_REQ)
         assertEquals(k.getInt("model_list"), Lkp.KIND_MODEL_LIST)
         assertEquals(k.getInt("set_model"), Lkp.KIND_SET_MODEL)
+        assertEquals(k.getInt("set_opts"), Lkp.KIND_SET_OPTS)
+        assertEquals(k.getInt("nomad_req"), Lkp.KIND_NOMAD_REQ)
+        assertEquals(k.getInt("nomad_resp"), Lkp.KIND_NOMAD_RESP)
     }
 }
