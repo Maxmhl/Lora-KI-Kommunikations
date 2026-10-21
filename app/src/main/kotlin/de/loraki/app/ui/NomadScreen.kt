@@ -41,7 +41,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -74,18 +74,19 @@ fun formatBytes(b: Long): String = when {
 }
 
 @Composable
-fun NomadScreen(vm: NomadViewModel) {
+fun NomadScreen(vm: NomadViewModel, chat: de.loraki.app.nomad.NomadChatViewModel) {
     var tab by rememberSaveable { mutableStateOf(0) }
-    val titles = listOf("Oberfläche", "Bibliothek", "Karte", "Wiki")
+    val titles = listOf("Oberfläche", "KI", "Bibliothek", "Karte", "Wiki")
     Column(Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = tab) {
+        ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
             titles.forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t, maxLines = 1) }) }
         }
         when (tab) {
-            0 -> NomadWebTab(vm, onOpenLibrary = { tab = 1 })
-            1 -> LibraryTab(vm)
-            2 -> MapTab(vm)
-            3 -> WikiTab(vm)
+            0 -> NomadWebTab(vm, onOpenLibrary = { tab = 2 })
+            1 -> NomadChatTab(chat, onOpenLibrary = { tab = 2 })
+            2 -> LibraryTab(vm)
+            3 -> MapTab(vm)
+            4 -> WikiTab(vm)
         }
     }
 }

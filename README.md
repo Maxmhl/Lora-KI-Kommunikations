@@ -23,7 +23,7 @@ Auf dem Server läuft **vollständiges Project NOMAD** (im Intranet direkt unter
 Schnittstelle (Gateway der Bridge)** ein: Tab *Nomad → Oberfläche* zeigt dieselbe Oberfläche wie der Browser. Große Inhalte –
 **Offline-Karten** und **Wikipedia & Co.** – lädt die App **einmal** aufs Handy und aktualisiert sie nur im einstellbaren
 Intervall (täglich/wöchentlich/monatlich/nie, nur WLAN, automatisch oder nur Benachrichtigung). Education-Plattform und Videos werden nicht
-angeboten. Einrichtung: [docs/SERVER.md](docs/SERVER.md).
+angeboten. Zusätzlich gibt es im Nomad-Tab einen **nativen Chat mit der NOMAD-KI** (Wissensdatenbank, Quellen, gleiche Sitzungen wie in der Weboberfläche). Einrichtung: [docs/SERVER.md](docs/SERVER.md).
 
 ## Einrichtung
 

@@ -62,6 +62,7 @@ async def client(tmp_path):
     up.router.add_get("/pm", ranged)
     up.router.add_get("/go", redirect)
     up.router.add_route("*", "/echo", echo)
+    up.router.add_route("PATCH", "/settings", lambda r: web.json_response({"method": r.method, "override": r.headers.get("X-HTTP-Method-Override")}))
     up_server = TestServer(up)
     await up_server.start_server()
     gw = TestServer(build_app(cat, TOKEN, str(up_server.make_url("/")).rstrip("/")))
@@ -178,3 +179,41 @@ async def test_nomad_knowledge_client(tmp_path):
         assert seen["body"]["model"] == "qwen" and seen["body"]["stream"] is False
     finally:
         await srv.close()
+
+
+async def test_method_override_for_patch(client):
+    r = await client.post("/settings", headers={**H, "X-HTTP-Method-Override": "PATCH"}, json={"key": "rag.enabled", "value": True})
+    assert r.status == 200 and (await r.json()) == {"method": "PATCH", "override": None}
+
+
+async def test_chat_stream_arrives_incrementally_through_gateway(tmp_path):
+    """SSE-Chat: das erste Token muss beim Client sein, bevor NOMAD die Antwort beendet (kein Puffern im Gateway)."""
+    release = asyncio.Event()
+
+    async def chat(request):
+        body = await request.json()
+        resp = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
+        await resp.prepare(request)
+        await resp.write(b'data: {"message":{"role":"assistant","content":"Hal"},"done":false}\n\n')
+        await release.wait()
+        await resp.write(f'data: {{"message":{{"role":"assistant","content":"lo {body["model"]}"}},"done":false}}\n\n'.encode())
+        await resp.write(b'data: {"sources":[{"title":"Wiki"}]}\n\n')
+        return resp
+
+    up = web.Application()
+    up.router.add_post("/api/ollama/chat", chat)
+    up_server = TestServer(up)
+    await up_server.start_server()
+    cat = Catalog(make_storage(tmp_path))
+    c = TestClient(TestServer(build_app(cat, TOKEN, str(up_server.make_url("/")).rstrip("/"))))
+    await c.start_server()
+    try:
+        r = await c.post("/api/ollama/chat", headers={**H, "Accept-Encoding": "identity"}, json={"model": "m", "messages": [], "stream": True})
+        first = await asyncio.wait_for(r.content.readuntil(b"\n\n"), 2)
+        assert b"Hal" in first                      # kam an, obwohl NOMAD noch nicht fertig ist
+        release.set()
+        rest = await r.content.read()
+        assert b"lo m" in rest and b"sources" in rest
+    finally:
+        await c.close()
+        await up_server.close()

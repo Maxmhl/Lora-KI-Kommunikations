@@ -47,12 +47,13 @@ class NomadRepo(private val ctx: Context, private val scope: CoroutineScope, pri
 
     // ------------------------------------------------------------ Server
 
-    private fun open(path: String, method: String = "GET", range: String? = null, ifRange: String? = null, timeoutMs: Int = 20_000): HttpURLConnection {
+    fun open(path: String, method: String = "GET", range: String? = null, ifRange: String? = null, timeoutMs: Int = 20_000): HttpURLConnection {
         val c = URL(settings.nomadUrl + path).openConnection() as HttpURLConnection
         c.requestMethod = method
         c.connectTimeout = timeoutMs
         c.readTimeout = 60_000
         c.setRequestProperty("Authorization", "Bearer ${settings.nomadToken}")
+        c.setRequestProperty("Accept-Encoding", "identity") // kein gzip: Streams (SSE) müssen sofort ankommen
         range?.let { c.setRequestProperty("Range", it) }
         ifRange?.let { c.setRequestProperty("If-Range", it) }
         return c

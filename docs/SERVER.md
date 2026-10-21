@@ -73,7 +73,18 @@ Das Gateway spricht HTTP. Für Zugriff von außen **nicht** den Port ins Interne
 |---|---|---|
 | Karte (Region + Weltübersicht, GPS-Position) | ✅ | PMTiles + Kartenstil/Schriften aus NOMAD |
 | Wikipedia & Co. lesen, Titel suchen | ✅ | ZIM-Dateien aus NOMAD (eigener Leser, ohne GPL-Code) |
-| NOMAD-Oberfläche (Chat mit Wissensdatenbank, Einstellungen, …) | ❌ braucht WLAN/VPN | Gateway |
+| NOMAD-Oberfläche (Einstellungen, Bibliothek verwalten, …) | ❌ braucht WLAN/VPN | Gateway |
+| **NOMAD-KI** (nativer Chat im Tab „KI“, streamt, mit Quellen) | ❌ braucht WLAN/VPN | Gateway → NOMAD → Ollama |
 | KI-Chat über LoRa | ✅ ohne Internet | Bridge + Ollama |
 
 Die Volltextsuche in ZIM-Dateien (Xapian-Index) ist nicht enthalten – gesucht wird nach Artikeltiteln.
+
+## NOMAD-KI in der App (Tab „Nomad → KI“)
+Natives Chat-Fenster, das NOMADs eigene KI-Schnittstelle nutzt – nicht die LoRa-Bridge:
+* **Gleiche Sitzungen wie die NOMAD-Weboberfläche**: neue Chats erscheinen dort mit Titel, alte lassen sich in der App fortsetzen („Verlauf“).
+* **Wissensdatenbank (RAG)**: der Schalter ändert die **serverweite** NOMAD-Einstellung `rag.enabled` – er gilt also auch in der Weboberfläche.
+  Quellen der Antwort werden unter der Nachricht angezeigt.
+* **Modelle**: Auswahl aus den in NOMAD/Ollama installierten Modellen (Bildfähige sind markiert).
+* Antworten werden live gestreamt; „Stopp“ bricht die Erzeugung auf dem Server ab.
+* Der Chat über **LoRa** (Tab „KI-Chat“) bleibt davon getrennt und funktioniert ohne WLAN.
+Voraussetzung: In NOMAD ist der **AI Assistant** installiert und mindestens ein Modell geladen.

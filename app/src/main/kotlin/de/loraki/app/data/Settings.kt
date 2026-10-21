@@ -38,5 +38,7 @@ class Settings(ctx: Context) {
     var nomadManifestJson: String? get() = p.getString("nomadManifest", null); set(v) = p.edit { putString("nomadManifest", v) }
     var nomadInstalledJson: String? get() = p.getString("nomadInstalled", null); set(v) = p.edit { putString("nomadInstalled", v) }
     var nomadWanted: Set<String> get() = p.getStringSet("nomadWanted", emptySet()) ?: emptySet(); set(v) = p.edit { putStringSet("nomadWanted", v) }
+    var nomadChatModel: String? get() = p.getString("nomadChatModel", null); set(v) = p.edit { putString("nomadChatModel", v) }
+    var nomadChatSession: String? get() = p.getString("nomadChatSession", null); set(v) = p.edit { putString("nomadChatSession", v) }
     var wantConnected: Boolean get() = p.getBoolean("want", false); set(v) = p.edit { putBoolean("want", v) }
 }

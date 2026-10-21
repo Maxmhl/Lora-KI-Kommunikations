@@ -105,6 +105,10 @@ def build_app(catalog: Catalog, token: str, upstream: str | None) -> web.Applica
         # Das Gateway-Token gehört nicht zu NOMAD (weder als Header noch als Cookie)
         if headers.get("Authorization", "").startswith("Bearer ") and hmac.compare_digest(headers["Authorization"][7:].strip(), token):
             del headers["Authorization"]
+        method = request.method
+        override = headers.pop("X-HTTP-Method-Override", "").upper()
+        if method == "POST" and override in ("PATCH", "PUT", "DELETE"):
+            method = override  # HttpURLConnection der App kann kein PATCH
         headers["X-Forwarded-Host"] = request.host
         headers["X-Forwarded-Proto"] = request.scheme
         # Token-Cookie nicht an NOMAD weiterreichen
@@ -117,7 +121,7 @@ def build_app(catalog: Catalog, token: str, upstream: str | None) -> web.Applica
         data = request.content if request.can_read_body else None
         session: aiohttp.ClientSession = request.app[SESSION]
         try:
-            async with session.request(request.method, url, headers=headers, data=data, allow_redirects=False) as up:
+            async with session.request(method, url, headers=headers, data=data, allow_redirects=False) as up:
                 out = web.StreamResponse(status=up.status, reason=up.reason)
                 for k, v in up.headers.items():
                     lk = k.lower()
