@@ -63,6 +63,7 @@ token = "…"                # das erzeugte Token
 Autostart: `deploy/lkbridge.service` (systemd). Port 8765 in der Firewall nur für Intranet/VPN öffnen.
 
 ## 4. Handy anbinden
+Token ist **optional**: Mit `token = ""` in der Bridge-Config läuft das Gateway offen – dann in der App nur die Adresse eintragen. Nur in vertrauenswürdigen Netzen (LAN/VPN) verwenden; ohne Token ist der Kompaktmodus aus (er braucht das gemeinsame Geheimnis).
 App → Tab **Nomad → Bibliothek**: Adresse `http://SERVER-IP:8765` und Token eintragen, „Speichern & testen“.
 Danach Karten und Bibliotheken auswählen und laden; Intervall (täglich/wöchentlich/monatlich/nie) und „nur WLAN“ einstellen.
 

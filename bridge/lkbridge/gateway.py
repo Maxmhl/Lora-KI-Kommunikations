@@ -39,6 +39,8 @@ class _File(web.FileResponse):
 
 
 def _token_ok(request: web.Request, token: str) -> bool:
+    if not token:  # ohne Token: offenes Gateway (nur für vertrauenswürdige Netze)
+        return True
     cands = []
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
@@ -49,8 +51,8 @@ def _token_ok(request: web.Request, token: str) -> bool:
 
 
 def build_app(catalog: Catalog, token: str, upstream: str | None, ops=None) -> web.Application:
-    if len(token) < 16:
-        raise ValueError("gateway.token muss mindestens 16 Zeichen lang sein")
+    if token and len(token) < 16:
+        raise ValueError("gateway.token muss leer (kein Token) oder mindestens 16 Zeichen lang sein")
 
     @web.middleware
     async def auth(request: web.Request, handler):
@@ -60,7 +62,7 @@ def build_app(catalog: Catalog, token: str, upstream: str | None, ops=None) -> w
             return web.json_response({"error": "unauthorized"}, status=401)
         resp = await handler(request)
         # Token aus ?lk_token= in ein Cookie übernehmen, damit Unterressourcen im WebView ohne Header funktionieren
-        if request.query.get(COOKIE) and not request.cookies.get(COOKIE) and not resp.prepared:
+        if token and request.query.get(COOKIE) and not request.cookies.get(COOKIE) and not resp.prepared:
             resp.set_cookie(COOKIE, token, httponly=True, samesite="Lax", max_age=3600 * 24 * 365)
         return resp
 
@@ -110,7 +112,7 @@ def build_app(catalog: Catalog, token: str, upstream: str | None, ops=None) -> w
         headers = {k: v for k, v in request.headers.items()
                    if k.lower() not in HOP_BY_HOP and k.lower() not in ("host", "content-length")}
         # Das Gateway-Token gehört nicht zu NOMAD (weder als Header noch als Cookie)
-        if headers.get("Authorization", "").startswith("Bearer ") and hmac.compare_digest(headers["Authorization"][7:].strip(), token):
+        if token and headers.get("Authorization", "").startswith("Bearer ") and hmac.compare_digest(headers["Authorization"][7:].strip(), token):
             del headers["Authorization"]
         method = request.method
         override = headers.pop("X-HTTP-Method-Override", "").upper()

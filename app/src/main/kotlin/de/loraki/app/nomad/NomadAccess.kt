@@ -53,7 +53,7 @@ class NomadAccess(private val settings: Settings, private val engine: Engine, pr
     private fun viaWlan(payload: ByteArray): ByteArray {
         val c = URL(settings.nomadUrl + "/lk/nomad").openConnection() as HttpURLConnection
         c.requestMethod = "POST"; c.connectTimeout = 4000; c.readTimeout = 120_000; c.doOutput = true
-        c.setRequestProperty("Authorization", "Bearer ${settings.nomadToken}")
+        if (settings.nomadToken.isNotBlank()) c.setRequestProperty("Authorization", "Bearer ${settings.nomadToken}")
         try {
             c.outputStream.use { it.write(payload) }
             if (c.responseCode == 401) throw IOException("Token abgelehnt (401)")

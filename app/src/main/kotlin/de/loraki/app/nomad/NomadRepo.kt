@@ -43,7 +43,7 @@ class NomadRepo(private val ctx: Context, private val scope: CoroutineScope, pri
     val checking = MutableStateFlow(false)
     val message = MutableStateFlow<String?>(null)
 
-    val configured get() = settings.nomadUrl.isNotBlank() && settings.nomadToken.isNotBlank()
+    val configured get() = settings.nomadUrl.isNotBlank()
 
     // ------------------------------------------------------------ Server
 
@@ -52,7 +52,7 @@ class NomadRepo(private val ctx: Context, private val scope: CoroutineScope, pri
         c.requestMethod = method
         c.connectTimeout = timeoutMs
         c.readTimeout = 60_000
-        c.setRequestProperty("Authorization", "Bearer ${settings.nomadToken}")
+        if (settings.nomadToken.isNotBlank()) c.setRequestProperty("Authorization", "Bearer ${settings.nomadToken}")
         c.setRequestProperty("Accept-Encoding", "identity") // kein gzip: Streams (SSE) müssen sofort ankommen
         range?.let { c.setRequestProperty("Range", it) }
         ifRange?.let { c.setRequestProperty("If-Range", it) }
@@ -61,7 +61,7 @@ class NomadRepo(private val ctx: Context, private val scope: CoroutineScope, pri
 
     /** Lädt das Manifest. Wirft IOException mit verständlicher Meldung. */
     suspend fun refresh(): Manifest = withContext(Dispatchers.IO) {
-        if (!configured) throw IOException("Server-Adresse und Token fehlen")
+        if (!configured) throw IOException("Server-Adresse fehlt")
         checking.value = true
         try {
             val c = open("/lk/manifest")

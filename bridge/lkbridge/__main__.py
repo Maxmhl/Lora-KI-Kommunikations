@@ -63,6 +63,8 @@ async def run(cfg: dict) -> None:
     if gc.get("enabled"):
         catalog = Catalog(nc.get("storage", "/opt/project-nomad/storage"), gc.get("exclude", DEFAULT_EXCLUDE),
                           int(float(gc["max_file_gb"]) * 1024**3) if gc.get("max_file_gb") else None)
+        if not gc.get("token"):
+            log.warning("Gateway läuft OHNE Token: jeder im Netzwerk kann NOMAD und die Downloads nutzen – nur in vertrauenswürdigen Netzen (LAN/VPN) verwenden, Port nie ins Internet")
         gw = Gateway(catalog, gc.get("token", ""), nc.get("url"), gc.get("host", "0.0.0.0"), int(gc.get("port", 8765)), ops)
         await gw.start()
     await asyncio.Event().wait()

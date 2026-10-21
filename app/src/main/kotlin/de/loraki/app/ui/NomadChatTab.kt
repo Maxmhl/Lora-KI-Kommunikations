@@ -52,7 +52,7 @@ fun NomadChatTab(vm: NomadChatViewModel, onOpenLibrary: () -> Unit) {
     if (!vm.configured) {
         Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Noch kein Server verbunden. Trage in der Bibliothek Adresse und Token des Gateways ein.")
+                Text("Noch kein Server verbunden. Trage in der Bibliothek die Adresse des Gateways ein.")
                 OutlinedButton(onOpenLibrary) { Text("Server einrichten") }
             }
         }

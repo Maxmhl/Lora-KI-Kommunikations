@@ -217,3 +217,19 @@ async def test_chat_stream_arrives_incrementally_through_gateway(tmp_path):
     finally:
         await c.close()
         await up_server.close()
+
+
+async def test_gateway_without_token_is_open(tmp_path):
+    cat = Catalog(make_storage(tmp_path))
+    c = TestClient(TestServer(build_app(cat, "", None)))
+    await c.start_server()
+    try:
+        r = await c.get("/lk/manifest")
+        assert r.status == 200          # kein 401: ohne Token ist der Zugriff offen
+    finally:
+        await c.close()
+
+
+def test_gateway_rejects_short_token(tmp_path):
+    with pytest.raises(ValueError):
+        build_app(Catalog(make_storage(tmp_path)), "kurz", None)

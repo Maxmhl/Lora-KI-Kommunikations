@@ -49,6 +49,6 @@ knowledge_base = false               # Standard für LoRa-Chats: NOMADs Wissensd
 enabled = false
 host = "0.0.0.0"
 port = 8765
-token = ""                           # mind. 16 Zeichen, z. B.: python -c "import secrets;print(secrets.token_urlsafe(24))"
+token = ""                           # leer = kein Token (nur im vertrauenswürdigen LAN/VPN; dann auch kein Kompaktmodus). Sonst mind. 16 Zeichen, z. B.: python -c "import secrets;print(secrets.token_urlsafe(24))"
 # exclude = ["ted_", "khan", "kolibri", "video"]   # Dateinamen-Muster, die NICHT angeboten werden (Bildung/Videos)
 # max_file_gb = 40

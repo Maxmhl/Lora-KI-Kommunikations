@@ -168,8 +168,8 @@ private fun ServerTab(vm: NomadViewModel) {
         AppCard { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Server (Gateway)", style = MaterialTheme.typography.titleSmall)
             OutlinedTextField(url, { url = it }, label = { Text("Adresse, z. B. http://192.168.1.10:8765") }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
-            OutlinedTextField(token, { token = it }, label = { Text("Token (mind. 16 Zeichen)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
-            Button({ vm.saveServer(url, token); vm.test() }, enabled = url.isNotBlank() && token.isNotBlank(), shape = RoundedCornerShape(12.dp)) { Text("Speichern & testen") }
+            OutlinedTextField(token, { token = it }, label = { Text("Token (optional, mind. 16 Zeichen)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
+            Button({ vm.saveServer(url, token); vm.test() }, enabled = url.isNotBlank(), shape = RoundedCornerShape(12.dp)) { Text("Speichern & testen") }
             conn?.let { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val ok = it.startsWith("Verbunden")
                 Box(Modifier.size(8.dp).clip(CircleShape).background(if (ok) c.accent else c.muted)); Text(it, fontSize = 13.sp, color = if (ok) c.accent else c.muted, fontWeight = FontWeight.Medium) } }
@@ -194,7 +194,7 @@ private fun ServerTab(vm: NomadViewModel) {
                 "Braucht MeshCore-Firmware mit Rohdaten-Unterstützung und einen direkten Pfad; sonst wechselt der Server automatisch auf den verschlüsselten Weg.", fontSize = 13.sp, lineHeight = 19.sp, color = c.muted)
             SwitchRow("Wikipedia-Antworten", compactText && hasSecret, { vm.setCompactText(it) }, enabled = hasSecret)
             SwitchRow("Kartenausschnitte", compactMap && hasSecret, { vm.setCompactMap(it) }, warning = "Mithörende sehen, welche Gegend du abrufst", enabled = hasSecret)
-            if (!hasSecret) Text("Zuerst oben ein Token (mind. 16 Zeichen, gleich wie in der Bridge) eintragen.", fontSize = 12.sp, color = c.muted)
+            if (!hasSecret) Text("Braucht ein Token (mind. 16 Zeichen, gleich wie in der Bridge) – ohne Token bleibt der Kompaktmodus aus.", fontSize = 12.sp, color = c.muted)
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.surface2).padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Default.Lock, null, Modifier.size(14.dp), tint = c.muted); Mono("HMAC-geprüft · Fälschungen werden verworfen", size = 11) }
         } }
@@ -219,10 +219,10 @@ private fun NomadWebTab(vm: NomadViewModel, onOpenLibrary: () -> Unit) {
     val ctx = LocalContext.current
     val base = vm.settings.nomadUrl
     val token = vm.settings.nomadToken
-    if (base.isBlank() || token.isBlank()) {
+    if (base.isBlank()) {
         Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Noch kein Server verbunden. Trage in der Bibliothek die Adresse und das Token des Gateways ein.")
+                Text("Noch kein Server verbunden. Trage in der Bibliothek die Adresse des Gateways ein (Token nur, falls auf dem Server eines gesetzt ist).")
                 Button(onOpenLibrary) { Text("Server einrichten") }
             }
         }
@@ -249,7 +249,7 @@ private fun NomadWebTab(vm: NomadViewModel, onOpenLibrary: () -> Unit) {
                 settings.saveFormData = false
                 CookieManager.getInstance().apply {
                     setAcceptCookie(true); setAcceptThirdPartyCookies(wv, true)
-                    setCookie(base, "lk_token=$token; Path=/"); flush()
+                    if (token.isNotBlank()) setCookie(base, "lk_token=$token; Path=/"); flush()
                 }
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(v: WebView, url: String, favicon: Bitmap?) { loading = true; error = null }
@@ -274,7 +274,7 @@ private fun NomadWebTab(vm: NomadViewModel, onOpenLibrary: () -> Unit) {
                         picker.launch("*/*"); return true
                     }
                 }
-                loadUrl("$base/", mapOf("Authorization" to "Bearer $token"))
+                loadUrl("$base/", if (token.isNotBlank()) mapOf("Authorization" to "Bearer $token") else emptyMap())
                 web = this
             }
         }, onRelease = { w -> if (vm.privacy.value) { w.clearCache(true); w.clearHistory(); w.clearFormData(); vm.clearWebData() }; w.destroy() })
