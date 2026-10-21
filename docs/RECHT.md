@@ -18,4 +18,5 @@
   869,4–869,65 MHz zulässig; in den 25-mW-Bändern (≤ 14 dBm ERP) muss die Leistung am Node gesenkt werden
   (Antennengewinn berücksichtigen). Die App warnt, prüft aber den Antennengewinn nicht.
 * Der Node sendet selbst Adverts, ACKs und Weiterleitungen – diese Airtime kennt die App nur grob (Reserve über den Sicherheitsfaktor).
-* Realistischer Durchsatz bei SF8/62,5 kHz/CR 4/8 und 10 %: ca. 10 Byte/s; bei 1 %: ca. 1 Byte/s.
+* Realistischer Durchsatz bei SF8/62,5 kHz/CR 4/8 (Paket ≈ 1,46 s Airtime, 118 Nutzbytes): bei 10 % ohne Sicherheitsfaktor ca. 8 Byte/s,
+  mit Faktor 0,8 ca. 6 Byte/s; bei 1 % ca. 0,6–0,8 Byte/s.

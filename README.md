@@ -47,8 +47,11 @@ cd bridge && python -m pytest          # Protokoll, Limiter, Übertragung mit Pa
 ```
 
 ## Grenzen / Hinweise
-* Durchsatz ist physikalisch gering (siehe `docs/RECHT.md`): ein 10-KB-Bild braucht bei 10 % Duty-Cycle ~15–20 min, bei 1 % ~3 h.
-  Bilder werden deshalb auf ≤ 384 px skaliert (WebP), Dateien sind standardmäßig auf 60 KB begrenzt (einstellbar).
+* Durchsatz ist physikalisch gering (siehe `docs/RECHT.md`): bei 10 % Duty-Cycle und Sicherheitsfaktor 0,8 sind es ca. 6 Byte/s (118 Byte alle ~18 s).
+  Ein 10-KB-Bild braucht dann ~27 min, bei 1 % rund 4,5 h. Bilder werden deshalb klein skaliert (Profile Klein/Mittel/Groß, WebP),
+  Dateien sind standardmäßig auf 60 KB begrenzt (einstellbar).
+* **Effizienz:** Texte werden mit Deflate + eingebautem deutschen Wörterbuch komprimiert, Binärdaten als basE91 gesendet,
+  und jedes Funkpaket nutzt den vollen AES-Block (154 Zeichen).
 * **Modellwahl:** In der App oben („Modell: … ▾“) pro Unterhaltung wählbar; die Liste holt die App einmalig vom Server (Ollama `/api/tags`).
 * Antworten der KI kommen als fertiger, komprimierter Block (kein Token-Streaming); die Bridge bittet das Modell um kurze Antworten.
 * Die Companion-Frame-Layouts (`core/.../Companion.kt`) basieren auf der Referenzbibliothek `meshcore_py` und sind

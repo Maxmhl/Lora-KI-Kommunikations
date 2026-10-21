@@ -16,6 +16,32 @@ private fun JSONArray.objs() = (0 until length()).map { getJSONObject(it) }
 class VectorTest {
     private val v = JSONObject(File(System.getProperty("vectors")).readText())
 
+    @Test fun base91Vectors() {
+        for (o in v.getJSONArray("base91").objs()) {
+            assertEquals(o.getString("text"), Base91.encode(hex(o.getString("data"))))
+            assertContentEquals(hex(o.getString("data")), Base91.decode(o.getString("text")))
+        }
+    }
+
+    @Test fun dictionaryIsIdenticalToPython() {
+        val sha = java.security.MessageDigest.getInstance("SHA-256").digest(Lkp.DICTIONARY).joinToString("") { "%02x".format(it) }
+        assertEquals(v.getString("dictionary_sha256"), sha)
+    }
+
+    @Test fun everyFrameFitsOneAesBudget() {
+        val rnd = java.util.Random(3)
+        val pats = listOf(0x00, 0xff, 0x58, 0x57, 0x5a).map { b -> ByteArray(Lkp.FRAGMENT_BYTES) { b.toByte() } } +
+            List(2000) { ByteArray(Lkp.FRAGMENT_BYTES).also { rnd.nextBytes(it) } }
+        for (p in pats) assert(Lkp.formatData(4095, 4095, 4095, p, true).length <= Lkp.TEXT_MAX)
+    }
+
+    @Test fun kotlinDictionaryCompressionRoundtripsAndBeatsPlain() {
+        val t = "Die Hauptstadt von Frankreich ist Paris. Das ist eine gute Frage.".toByteArray()
+        val c = Lkp.buildEnvelope(Lkp.KIND_REPLY, 0, t)
+        assert(c.size < Lkp.buildEnvelope(Lkp.KIND_REPLY, 0, t, compress = false).size - 15)
+        assertContentEquals(t, Lkp.parseEnvelope(c).payload)
+    }
+
     @Test fun nums() {
         val a = v.getJSONArray("nums")
         for (i in 0 until a.length()) {
@@ -89,7 +115,7 @@ class VectorTest {
     @Test fun constants() {
         val c = v.getJSONObject("constants")
         assertEquals(c.getInt("fragment_bytes"), Lkp.FRAGMENT_BYTES)
-        assertEquals(c.getInt("body_chars"), Lkp.BODY_CHARS)
+        assertEquals(c.getInt("text_max"), Lkp.TEXT_MAX)
         assertEquals(c.getInt("window"), Lkp.WINDOW)
         val k = c.getJSONObject("kinds")
         assertEquals(k.getInt("text"), Lkp.KIND_TEXT)

@@ -10,7 +10,8 @@ def test_airtime_reference():
 
 
 def test_packet_size_estimate():
-    assert mesh_packet_bytes(140) == 1 + 1 + 4 + 160
+    assert mesh_packet_bytes(154) == 1 + 1 + 4 + 160  # 5 + 154 + 1 = genau 10 AES-Blöcke
+    assert mesh_packet_bytes(155) == 1 + 1 + 4 + 176
 
 
 def test_subbands():

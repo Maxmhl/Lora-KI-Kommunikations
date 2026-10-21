@@ -31,7 +31,7 @@ def test_incompressible_not_flagged():
 def test_frame_roundtrip_and_size():
     chunk = os.urandom(codec.FRAGMENT_BYTES)
     t = codec.format_data(77, 5, 40, chunk, poll=True)
-    assert len(t) == codec.HEADER_CHARS + codec.BODY_CHARS == 140
+    assert len(t) <= codec.TEXT_MAX
     f = codec.parse_frame(t)
     assert (f.type, f.msg_id, f.idx, f.total, f.body) == (codec.T_POLL, 77, 5, 40, chunk)
     a = codec.parse_frame(codec.format_ack(9, 12, [3, 7]))
@@ -46,3 +46,35 @@ def test_non_protocol_text():
 
 def test_file_pack():
     assert codec.unpack_file(codec.pack_file("a.txt", "text/plain", b"xyz")) == ("a.txt", "text/plain", b"xyz")
+
+
+def test_every_frame_fits_one_aes_budget():
+    """Worst-Case-Daten dürfen nie über TEXT_MAX Zeichen hinauskommen (sonst teurerer Funkblock)."""
+    for pat in (b"\x00", b"\xff", b"\x58", b"\x57", b"\x5a"):
+        t = codec.format_data(4095, 4095, 4095, pat * codec.FRAGMENT_BYTES, poll=True)
+        assert len(t) <= codec.TEXT_MAX
+    for _ in range(2000):
+        t = codec.format_data(1, 2, 3, os.urandom(codec.FRAGMENT_BYTES), poll=False)
+        assert len(t) <= codec.TEXT_MAX and t.isascii()
+
+
+def test_base91_roundtrip():
+    from lkbridge import base91
+    for n in list(range(80)) + [118, 1000]:
+        d = os.urandom(n)
+        assert base91.decode(base91.encode(d)) == d
+
+
+def test_dictionary_compression_beats_plain_deflate_on_short_german():
+    txt = "Die Hauptstadt von Frankreich ist Paris. Das ist eine gute Frage.".encode()
+    plain = len(codec.build_envelope(codec.KIND_REPLY, 0, txt, compress=False))
+    comp = codec.build_envelope(codec.KIND_REPLY, 0, txt)
+    assert len(comp) < plain - 15
+    assert codec.parse_envelope(comp).payload == txt
+
+
+def test_unknown_flags_rejected():
+    import zlib
+    rest = bytes([0x80, 1, 0]) + b"x"
+    with pytest.raises(codec.ProtocolError):
+        codec.parse_envelope(zlib.crc32(rest).to_bytes(4, "big") + rest)

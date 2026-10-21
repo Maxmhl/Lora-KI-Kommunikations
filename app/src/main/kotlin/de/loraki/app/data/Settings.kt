@@ -17,8 +17,8 @@ class Settings(ctx: Context) {
     var dutyOverridePercent: Float get() = p.getFloat("duty", 0f); set(v) = p.edit { putFloat("duty", v) }
     var margin: Float get() = p.getFloat("margin", 0.8f); set(v) = p.edit { putFloat("margin", v) }
 
-    var imageMaxDim: Int get() = p.getInt("imgDim", 384); set(v) = p.edit { putInt("imgDim", v) }
-    var imageQuality: Int get() = p.getInt("imgQ", 55); set(v) = p.edit { putInt("imgQ", v) }
+    var imageMaxDim: Int get() = p.getInt("imgDim", 320); set(v) = p.edit { putInt("imgDim", v) }
+    var imageQuality: Int get() = p.getInt("imgQ", 50); set(v) = p.edit { putInt("imgQ", v) }
     var maxAttachKb: Int get() = p.getInt("maxKb", 60); set(v) = p.edit { putInt("maxKb", v) }
 
     var currentConv: Int get() = p.getInt("conv", 0); set(v) = p.edit { putInt("conv", v) }

@@ -27,7 +27,7 @@ object Airtime {
 
     /** Geschätzte Funkpaketgröße einer MeshCore-Direktnachricht. */
     fun meshPacketBytes(textUtf8Len: Int, pathLen: Int = 0): Int {
-        val cipher = (5 + textUtf8Len + 15) / 16 * 16
+        val cipher = (5 + textUtf8Len + 1 + 15) / 16 * 16 // +1: Terminator (konservativ)
         return 1 + 1 + pathLen + 2 + 2 + cipher
     }
 
@@ -53,7 +53,7 @@ object Airtime {
     /** Grobe Dauerabschätzung für ein Objekt (Bytes inkl. Envelope) bei gegebenem Duty-Cycle. */
     fun estimateTransferSeconds(envelopeBytes: Int, r: RadioParams, duty: Double, margin: Double = 0.8): Double {
         val frags = (envelopeBytes + Lkp.FRAGMENT_BYTES - 1) / Lkp.FRAGMENT_BYTES
-        val perFrag = seconds(meshPacketBytes(Lkp.HEADER_CHARS + Lkp.BODY_CHARS), r) / (duty * margin)
+        val perFrag = seconds(meshPacketBytes(Lkp.TEXT_MAX), r) / (duty * margin)
         val windows = (frags + Lkp.WINDOW - 1) / Lkp.WINDOW
         return frags * perFrag + windows * 10.0
     }

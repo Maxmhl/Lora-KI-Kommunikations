@@ -26,9 +26,9 @@ def airtime_s(payload_bytes: int, r: RadioParams) -> float:
 def mesh_packet_bytes(text_utf8_len: int, path_len: int = 0) -> int:
     """Geschätzte Funkpaketgröße einer MeshCore-Direktnachricht.
 
-    Header(1) + path_len(1) + Pfad + dest/src-Hash(2) + MAC(2) + AES-Blöcke(ts4+flags1+Text).
+    Header(1) + path_len(1) + Pfad + dest/src-Hash(2) + MAC(2) + AES-Blöcke(ts4+flags1+Text+NUL).
     """
-    cipher = -(-(5 + text_utf8_len) // 16) * 16
+    cipher = -(-(5 + text_utf8_len + 1) // 16) * 16  # +1: Terminator (konservativ)
     return 1 + 1 + path_len + 2 + 2 + cipher
 
 

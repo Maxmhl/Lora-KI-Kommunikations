@@ -141,6 +141,13 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
             }
 
             Section("4 · Anhänge") {
+                Text("Bildprofil (jedes Byte kostet Sendezeit):", fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Klein" to (192 to 40), "Mittel" to (320 to 50), "Groß" to (448 to 60)).forEach { (label, v) ->
+                        OutlinedButton({ dim = v.first.toFloat(); quality = v.second.toFloat()
+                            vm.settings.imageMaxDim = v.first; vm.settings.imageQuality = v.second }) { Text(label) }
+                    }
+                }
                 Text("Bild: max. ${dim.toInt()} px Kantenlänge", fontSize = 13.sp)
                 Slider(dim, { dim = Math.round(it / 32) * 32f; vm.settings.imageMaxDim = dim.toInt() }, valueRange = 128f..1024f)
                 Text("Bildqualität: ${quality.toInt()} %", fontSize = 13.sp)

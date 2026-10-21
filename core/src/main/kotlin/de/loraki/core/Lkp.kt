@@ -1,7 +1,6 @@
 package de.loraki.core
 
 import java.io.ByteArrayOutputStream
-import java.util.Base64
 import java.util.zip.CRC32
 import java.util.zip.DataFormatException
 import java.util.zip.Deflater
@@ -19,8 +18,11 @@ object Lkp {
     const val T_ABORT = 'X'
 
     const val HEADER_CHARS = 8
-    const val BODY_CHARS = 132
-    const val FRAGMENT_BYTES = BODY_CHARS / 4 * 3
+    /** 5 Byte (Zeitstempel+Flags) + 154 Zeichen + 1 (Terminator) = 160 = genau 10 AES-Blöcke; mehr Zeichen kosten einen weiteren Block Airtime. */
+    const val TEXT_MAX = 154
+    const val BODY_CHARS_MAX = TEXT_MAX - HEADER_CHARS
+    /** basE91-Worst-Case: 118 Byte ergeben höchstens 146 Zeichen. */
+    const val FRAGMENT_BYTES = 118
     const val WINDOW = 6
     const val MAX_MISSING = 12
 
@@ -34,7 +36,8 @@ object Lkp {
     const val KIND_MODEL_LIST = 8
     const val KIND_SET_MODEL = 9
 
-    private const val FLAG_ZLIB = 1
+    private const val FLAG_DEFLATE = 0x02
+    private const val FLAG_DICT = 0x04
     private const val MAX_INFLATED = 8 * 1024 * 1024
 
     class ProtocolException(msg: String) : Exception(msg)
@@ -59,12 +62,19 @@ object Lkp {
     private fun crc(data: ByteArray, off: Int = 0): Long =
         CRC32().also { it.update(data, off, data.size - off) }.value
 
+    /** Gemeinsames Vorab-Wörterbuch (identisch zu bridge/lkbridge/dictionary.txt). */
+    val DICTIONARY: ByteArray by lazy {
+        Lkp::class.java.getResourceAsStream("/de/loraki/core/dictionary.txt")!!.use { it.readBytes() }
+    }
+
     fun buildEnvelope(kind: Int, conv: Int, payload: ByteArray, compress: Boolean = true): ByteArray {
         var flags = 0
         var body = payload
-        if (compress && payload.size > 24) {
-            val z = deflate(payload)
-            if (z.size < payload.size) { body = z; flags = FLAG_ZLIB }
+        if (compress && payload.isNotEmpty()) {
+            for ((f, useDict) in listOf(FLAG_DEFLATE to false, (FLAG_DEFLATE or FLAG_DICT) to true)) {
+                val z = deflate(payload, useDict)
+                if (z.size < body.size) { flags = f; body = z }
+            }
         }
         val rest = byteArrayOf(flags.toByte(), kind.toByte(), conv.toByte()) + body
         val c = crc(rest)
@@ -79,12 +89,14 @@ object Lkp {
         if (crc(data, 4) != expected) throw ProtocolException("CRC32 stimmt nicht")
         val flags = data[4].toInt() and 0xFF
         var body = data.copyOfRange(7, data.size)
-        if (flags and FLAG_ZLIB != 0) body = inflate(body)
+        if (flags and FLAG_DEFLATE != 0) body = inflate(body, flags and FLAG_DICT != 0)
+        else if (flags != 0) throw ProtocolException("Unbekannte Flags: 0x${flags.toString(16)}")
         return Envelope(data[5].toInt() and 0xFF, data[6].toInt() and 0xFF, body)
     }
 
-    private fun deflate(b: ByteArray): ByteArray {
-        val d = Deflater(9)
+    private fun deflate(b: ByteArray, useDict: Boolean): ByteArray {
+        val d = Deflater(9, true)
+        if (useDict) d.setDictionary(DICTIONARY)
         d.setInput(b); d.finish()
         val out = ByteArrayOutputStream()
         val buf = ByteArray(4096)
@@ -93,20 +105,21 @@ object Lkp {
         return out.toByteArray()
     }
 
-    private fun inflate(b: ByteArray): ByteArray {
-        val inf = Inflater()
+    private fun inflate(b: ByteArray, useDict: Boolean): ByteArray {
+        val inf = Inflater(true)
+        if (useDict) inf.setDictionary(DICTIONARY)
         inf.setInput(b)
         val out = ByteArrayOutputStream()
         val buf = ByteArray(4096)
         try {
             while (!inf.finished()) {
                 val n = inf.inflate(buf)
-                if (n == 0 && (inf.needsInput() || inf.needsDictionary())) throw ProtocolException("zlib: unvollständig")
+                if (n == 0 && (inf.needsInput() || inf.needsDictionary())) throw ProtocolException("deflate: unvollständig")
                 out.write(buf, 0, n)
                 if (out.size() > MAX_INFLATED) throw ProtocolException("Entpackte Daten zu groß")
             }
         } catch (e: DataFormatException) {
-            throw ProtocolException("zlib: ${e.message}")
+            throw ProtocolException("deflate: ${e.message}")
         } finally { inf.end() }
         return out.toByteArray()
     }
@@ -147,7 +160,7 @@ object Lkp {
 
     fun formatData(msgId: Int, idx: Int, total: Int, chunk: ByteArray, poll: Boolean): String =
         "$MARKER${if (poll) T_POLL else T_DATA}${encNum(msgId)}${encNum(idx)}${encNum(total)}" +
-            Base64.getEncoder().encodeToString(chunk)
+            Base91.encode(chunk)
 
     fun formatAck(msgId: Int, hi: Int, missing: List<Int>): String =
         "$MARKER$T_ACK${encNum(msgId)}${encNum(hi)}" + missing.take(MAX_MISSING).joinToString("") { encNum(it) }
@@ -165,7 +178,7 @@ object Lkp {
                     val idx = decNum(text.substring(4, 6))
                     val total = decNum(text.substring(6, 8))
                     if (total == 0 || idx >= total) return null
-                    Frame.Data(id, idx, total, Base64.getDecoder().decode(text.substring(8)), text[1] == T_POLL)
+                    Frame.Data(id, idx, total, Base91.decode(text.substring(8)), text[1] == T_POLL)
                 }
                 T_ACK -> {
                     val hi = decNum(text.substring(4, 6))

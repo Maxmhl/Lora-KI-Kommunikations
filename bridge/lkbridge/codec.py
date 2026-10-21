@@ -1,15 +1,16 @@
 """LKP v1 – Wire-Format (siehe protocol/PROTOCOL.md).
 
-Alles läuft als MeshCore-Textnachricht (UTF-8). Binärdaten werden Base64-kodiert.
+Alles läuft als MeshCore-Textnachricht (ASCII). Binärdaten werden basE91-kodiert.
 Die Kotlin-Implementierung in core/ muss byte-identisch arbeiten; gemeinsame
 Testvektoren liegen in protocol/test-vectors.json.
 """
 from __future__ import annotations
 
-import base64
-import binascii
 import zlib
 from dataclasses import dataclass, field
+from pathlib import Path
+
+from . import base91
 
 NUM_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 MAX_NUM = 64 * 64 - 1  # 4095
@@ -21,8 +22,11 @@ T_ACK = "A"
 T_ABORT = "X"
 
 HEADER_CHARS = 8  # ~ + Typ + id(2) + idx(2) + total(2)
-BODY_CHARS = 132  # Vielfaches von 4 -> keine Padding-Zeichen in Zwischenfragmenten
-FRAGMENT_BYTES = BODY_CHARS // 4 * 3  # 99
+# 5 Byte (Zeitstempel+Flags) + 154 Zeichen + 1 (Terminator) = 160 = exakt 10 AES-Blöcke:
+# jedes Zeichen mehr würde einen weiteren 16-Byte-Block (mehr Airtime) kosten.
+TEXT_MAX = 154
+BODY_CHARS_MAX = TEXT_MAX - HEADER_CHARS  # 146
+FRAGMENT_BYTES = 118  # basE91-Worst-Case: 118 Byte -> höchstens 146 Zeichen
 WINDOW = 6
 MAX_MISSING = 12
 
@@ -36,12 +40,34 @@ KIND_MODEL_LIST_REQ = 7  # App -> Server: verfügbare Modelle anfordern (leere N
 KIND_MODEL_LIST = 8  # Server -> App: Zeilen 'name\tflags' (flags: v = Bildverständnis)
 KIND_SET_MODEL = 9  # App -> Server: Modellname für diese conv (leer = Server-Standard)
 
-FLAG_ZLIB = 0x01
+FLAG_DEFLATE = 0x02  # rohes Deflate (ohne zlib-Header)
+FLAG_DICT = 0x04  # zusätzlich mit eingebautem Wörterbuch (dictionary.txt)
 MAX_INFLATED = 8 * 1024 * 1024
 
 
 class ProtocolError(ValueError):
     pass
+
+
+# Gemeinsames Vorab-Wörterbuch; muss byte-identisch zu core/src/main/resources/de/loraki/core/dictionary.txt sein.
+DICTIONARY = (Path(__file__).with_name("dictionary.txt")).read_bytes()
+
+
+def _deflate(data: bytes, use_dict: bool) -> bytes:
+    c = (zlib.compressobj(9, zlib.DEFLATED, -15, 9, zlib.Z_DEFAULT_STRATEGY, DICTIONARY) if use_dict
+         else zlib.compressobj(9, zlib.DEFLATED, -15))
+    return c.compress(data) + c.flush()
+
+
+def _inflate(data: bytes, use_dict: bool) -> bytes:
+    d = zlib.decompressobj(-15, DICTIONARY) if use_dict else zlib.decompressobj(-15)
+    try:
+        out = d.decompress(data, MAX_INFLATED + 1)
+    except zlib.error as e:
+        raise ProtocolError(f"deflate: {e}") from e
+    if len(out) > MAX_INFLATED:
+        raise ProtocolError("Entpackte Daten zu groß")
+    return out
 
 
 def enc_num(n: int) -> str:
@@ -69,12 +95,12 @@ class Envelope:
 
 
 def build_envelope(kind: int, conv: int, payload: bytes, compress: bool = True) -> bytes:
-    flags = 0
-    body = payload
-    if compress and len(payload) > 24:
-        z = zlib.compress(payload, 9)
-        if len(z) < len(payload):
-            body, flags = z, FLAG_ZLIB
+    flags, body = 0, payload
+    if compress and payload:
+        for f, use_dict in ((FLAG_DEFLATE, False), (FLAG_DEFLATE | FLAG_DICT, True)):
+            z = _deflate(payload, use_dict)
+            if len(z) < len(body):
+                flags, body = f, z
     rest = bytes([flags, kind, conv]) + body
     return zlib.crc32(rest).to_bytes(4, "big") + rest
 
@@ -87,14 +113,10 @@ def parse_envelope(data: bytes) -> Envelope:
         raise ProtocolError("CRC32 stimmt nicht")
     flags, kind, conv = rest[0], rest[1], rest[2]
     body = rest[3:]
-    if flags & FLAG_ZLIB:
-        d = zlib.decompressobj()
-        try:
-            body = d.decompress(body, MAX_INFLATED + 1)
-        except zlib.error as e:
-            raise ProtocolError(f"zlib: {e}") from e
-        if len(body) > MAX_INFLATED:
-            raise ProtocolError("Entpackte Daten zu groß")
+    if flags & FLAG_DEFLATE:
+        body = _inflate(body, bool(flags & FLAG_DICT))
+    elif flags:
+        raise ProtocolError(f"Unbekannte Flags: {flags:#x}")
     return Envelope(kind, conv, body)
 
 
@@ -137,7 +159,7 @@ def fragment(envelope: bytes) -> list[bytes]:
 def format_data(msg_id: int, idx: int, total: int, chunk: bytes, poll: bool) -> str:
     t = T_POLL if poll else T_DATA
     return (MARKER + t + enc_num(msg_id) + enc_num(idx) + enc_num(total)
-            + base64.b64encode(chunk).decode())
+            + base91.encode(chunk))
 
 
 def format_ack(msg_id: int, hi: int, missing: list[int]) -> str:
@@ -162,7 +184,7 @@ def parse_frame(text: str) -> Frame | None:
             idx, total = dec_num(text[4:6]), dec_num(text[6:8])
             if total == 0 or idx >= total:
                 return None
-            body = base64.b64decode(text[8:], validate=True)
+            body = base91.decode(text[8:])
             return Frame(t, mid, idx, total, body)
         if t == T_ACK:
             hi = dec_num(text[4:6])
@@ -172,6 +194,6 @@ def parse_frame(text: str) -> Frame | None:
             return Frame(t, mid, hi=hi, missing=[dec_num(rest[i:i + 2]) for i in range(0, len(rest), 2)])
         if t == T_ABORT:
             return Frame(t, mid)
-    except (ProtocolError, binascii.Error):
+    except (ProtocolError, ValueError):
         return None
     return None

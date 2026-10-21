@@ -1,19 +1,22 @@
-# LKP v1 – LoRa-KI-Protokoll
+# LKP v2 – LoRa-KI-Protokoll
 
 Anwendungsprotokoll zwischen Android-App und Bridge. Es setzt auf **MeshCore-Direktnachrichten (Text)** auf.
+**Version 2 ist nicht kompatibel zu v1** (anderes Kodierungs- und Fragmentformat): App und Bridge gemeinsam aktualisieren.
 Referenzimplementierungen: `bridge/lkbridge/codec.py` (Python) und `core/.../Lkp.kt` (Kotlin);
 beide werden gegen `protocol/test-vectors.json` geprüft (`python protocol/gen_vectors.py` erzeugt sie neu).
 
 ## Warum Text?
 MeshCore-Direktnachrichten tragen UTF-8-Text (max. 160 Byte inkl. Zeitstempel/Flags im verschlüsselten Block).
-Binärdaten werden daher Base64-kodiert (+33 %). Die Pakete sind bereits Ende-zu-Ende verschlüsselt (MeshCore).
+Binärdaten werden daher mit **basE91** kodiert (~23 % Overhead statt 33 % bei Base64; nur druckbare ASCII-Zeichen). Die Pakete sind bereits Ende-zu-Ende verschlüsselt (MeshCore).
 
 ## Objekt (Envelope)
 ```
 crc32(4, BE) | flags(1) | kind(1) | conv(1) | payload
 ```
 * `crc32` über `flags|kind|conv|payload` (nach evtl. Kompression, wie gesendet)
-* `flags` Bit0 = payload ist zlib-komprimiert (nur gesetzt, wenn es kleiner wird)
+* `flags`: `0x02` = Nutzlast mit rohem Deflate (ohne Header) komprimiert; `0x04` zusätzlich mit dem eingebauten Wörterbuch
+  (`dictionary.txt`, byte-identisch in Bridge und App, per SHA-256 in den Testvektoren geprüft). Der Sender probiert unkomprimiert / Deflate /
+  Deflate+Wörterbuch und nimmt das kleinste. Das Wörterbuch spart v. a. bei kurzen deutschen Texten (typisch 20–40 %).
 * `kind`: 1 Text · 2 Bild · 3 Datei · 4 KI-Antwort · 5 Status/Fehler · 6 Kontext zurücksetzen · 7 Modellliste anfordern · 8 Modellliste · 9 Modell wählen
 * `conv`: Unterhaltungs-ID 0–255 (Server hält Verlauf pro Absender + conv)
 * Bild/Datei-Payload: `len(name)(1) name len(mime)(1) mime daten`
@@ -30,12 +33,13 @@ Zahlen sind 12 Bit in 2 Zeichen des Alphabets `A–Z a–z 0–9 + /` (Index = W
 
 | Frame | Aufbau | Bedeutung |
 |---|---|---|
-| Daten | `~D` id(2) idx(2) total(2) base64 | Fragment `idx` von `total` |
-| Poll  | `~P` id(2) idx(2) total(2) base64 | wie Daten, aber **ACK anfordern** (letztes Fragment eines Fensters) |
+| Daten | `~D` id(2) idx(2) total(2) basE91 | Fragment `idx` von `total` |
+| Poll  | `~P` id(2) idx(2) total(2) basE91 | wie Daten, aber **ACK anfordern** (letztes Fragment eines Fensters) |
 | ACK   | `~A` id(2) hi(2) [missing(2)]* | Empfänger hat alle Indizes `< hi` außer `missing` (max. 12) |
 | Abbruch | `~X` id(2) | Empfänger lehnt ab (z. B. Objekt zu groß) |
 
-* Fragment = 99 Nutzbytes = 132 Base64-Zeichen → Frame 140 Zeichen.
+* Fragment = 118 Nutzbytes → höchstens 146 basE91-Zeichen → Frame höchstens **154 Zeichen**. Grund: MeshCore verschlüsselt in 16-Byte-Blöcken
+  (`4 Zeitstempel + 1 Flags + Text + 1 Terminator`); 154 Zeichen füllen genau 10 Blöcke. Jedes Zeichen mehr kostet einen weiteren Block Airtime.
 * `id` wählt der Sender (12 Bit, pro Sender eindeutig). Nachrichten ohne `~`-Präfix behandelt die Bridge als Klartext-Prompt (conv 0).
 * Passt die Lückenliste nicht in einen ACK (> 12), wird `hi` auf die erste ausgelassene Lücke gekürzt – der Sender nimmt so nie Fragmente als empfangen an, die fehlen.
 

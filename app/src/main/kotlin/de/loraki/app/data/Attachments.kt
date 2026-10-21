@@ -48,20 +48,27 @@ object Attachments {
                 else -> 0f
             }
         } ?: 0f
-        val scale = maxDim.toFloat() / max(bmp.width, bmp.height)
-        val m = Matrix().apply { if (scale < 1f) postScale(scale, scale); if (rot != 0f) postRotate(rot) }
-        bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
-
         val fmt = if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else @Suppress("DEPRECATION") Bitmap.CompressFormat.WEBP
-        var q = quality
-        var out: ByteArray
-        do {
-            out = ByteArrayOutputStream().also { bmp.compress(fmt, q, it) }.toByteArray()
-            q -= 10
-        } while (out.size > maxBytes && q >= 15)
-        if (out.size > maxBytes) throw IOException("Bild bleibt über ${maxBytes / 1024} KB – kleinere Auflösung wählen")
+        // Erst Qualität senken, dann die Auflösung verkleinern, bis das Bild in das Größenlimit passt.
+        var dim = maxDim
+        var out: ByteArray? = null
+        while (out == null) {
+            val scale = dim.toFloat() / max(bmp.width, bmp.height)
+            val m = Matrix().apply { if (scale < 1f) postScale(scale, scale); if (rot != 0f) postRotate(rot) }
+            val scaled = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
+            var q = quality
+            while (q >= 15) {
+                val bytes = ByteArrayOutputStream().also { scaled.compress(fmt, q, it) }.toByteArray()
+                if (bytes.size <= maxBytes) { out = bytes; break }
+                q -= 10
+            }
+            if (out == null) {
+                dim = (dim * 0.8f).toInt()
+                if (dim < 96) throw IOException("Bild lässt sich nicht auf ${maxBytes / 1024} KB verkleinern – Größenlimit erhöhen")
+            }
+        }
         val base = displayName(ctx, uri).substringBeforeLast('.')
-        return Prepared("$base.webp", "image/webp", out, true)
+        return Prepared("$base.webp", "image/webp", out!!, true)
     }
 
     fun prepareFile(ctx: Context, uri: Uri, maxBytes: Int): Prepared {
