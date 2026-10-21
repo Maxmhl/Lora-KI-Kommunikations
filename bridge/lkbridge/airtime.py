@@ -32,6 +32,11 @@ def mesh_packet_bytes(text_utf8_len: int, path_len: int = 0) -> int:
     return 1 + 1 + path_len + 2 + 2 + cipher
 
 
+def raw_packet_bytes(frame_len: int, path_len: int = 0) -> int:
+    """Funkpaket eines MeshCore-Rohdatenpakets: Kopf(1) + Pfadlänge(1) + Pfad + Nutzdaten (kein Empfänger-Hash, kein MAC, kein Padding)."""
+    return 2 + path_len + frame_len
+
+
 def text_airtime_s(text: str, r: RadioParams) -> float:
     return airtime_s(mesh_packet_bytes(len(text.encode())), r)
 

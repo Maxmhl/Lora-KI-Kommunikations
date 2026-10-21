@@ -42,6 +42,24 @@ class VectorTest {
         assertContentEquals(t, Lkp.parseEnvelope(c).payload)
     }
 
+    @Test fun rawFramesMatchPython() {
+        val raw = v.getJSONObject("raw")
+        val key = LkRaw.deriveKey(raw.getString("secret"))
+        assertContentEquals(hex(raw.getString("key")), key)
+        for (o in raw.getJSONArray("frames").objs()) {
+            val chunk = hex(o.getString("chunk"))
+            val frame = hex(o.getString("frame"))
+            assertContentEquals(frame, LkRaw.build(key, o.getInt("id"), o.getInt("idx"), o.getInt("total"), chunk, o.getBoolean("poll")))   // byte-identisch
+            val f = LkRaw.parse(key, frame)!!
+            assertEquals(o.getInt("id"), f.msgId); assertEquals(o.getInt("idx"), f.idx); assertEquals(o.getInt("total"), f.total)
+            assertEquals(o.getBoolean("poll"), f.poll); assertContentEquals(chunk, f.body)
+            val bad = frame.copyOf().also { it[10] = (it[10] + 1).toByte() }
+            assertNull(LkRaw.parse(key, bad))                                    // Manipulation wird erkannt
+            assertNull(LkRaw.parse(LkRaw.deriveKey("fremd-fremd-fremd-1"), frame)) // falsches Geheimnis
+        }
+        assertNull(LkRaw.parse(key, ByteArray(5)))
+    }
+
     @Test fun nums() {
         val a = v.getJSONArray("nums")
         for (i in 0 until a.length()) {

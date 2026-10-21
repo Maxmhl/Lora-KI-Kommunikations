@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "bridge"))
-from lkbridge import base91, codec  # noqa: E402
+from lkbridge import base91, codec, rawframe  # noqa: E402
 from lkbridge.airtime import RadioParams, airtime_s, mesh_packet_bytes, subband_limits  # noqa: E402
 
 # Wörterbuch: Bridge-Datei ist die Quelle, die Kotlin-Ressource wird synchron gehalten
@@ -33,6 +33,11 @@ v = {
     "base91": [{"data": d.hex(), "text": base91.encode(d)} for d in
                (b"", b"a", b"hello world", bytes(range(256)), b"\x00" * 30, b"\xff" * 30, b"\x58" * 40)],
     "dictionary_sha256": hashlib.sha256(DICT_SRC.read_bytes()).hexdigest(),
+    "raw": {"secret": "ein-gemeinsames-geheimnis", "key": rawframe.derive_key("ein-gemeinsames-geheimnis").hex(),
+            "frames": [{"id": 77, "idx": 5, "total": 40, "poll": True, "chunk": bytes(range(rawframe.MAX_CHUNK)).hex(),
+                        "frame": rawframe.build(rawframe.derive_key("ein-gemeinsames-geheimnis"), 77, 5, 40, bytes(range(rawframe.MAX_CHUNK)), True).hex()},
+                       {"id": 0, "idx": 0, "total": 1, "poll": False, "chunk": b"hi".hex(),
+                        "frame": rawframe.build(rawframe.derive_key("ein-gemeinsames-geheimnis"), 0, 0, 1, b"hi", False).hex()}]},
     "non_frames": ["hallo", "~", "~Dxx", "~DAAAAAA!!!!"],
     "envelopes": [
         {"kind": codec.KIND_TEXT, "conv": 3, "payload": b"Hallo".hex(),

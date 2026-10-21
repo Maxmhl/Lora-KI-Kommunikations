@@ -79,8 +79,12 @@ class NomadAccess(private val settings: Settings, private val engine: Engine, pr
     }
 
     /** Geschätzte Wartezeit für eine Antwort dieser Größe (Sekunden); null im WLAN. */
-    fun estimateSeconds(responseBytes: Int): Double? =
-        if (_mode.value == NomadMode.LORA) engine.estimateSeconds(responseBytes + 40) else null
+    fun estimateSeconds(responseBytes: Int, map: Boolean = false): Double? {
+        if (_mode.value != NomadMode.LORA) return null
+        val base = engine.estimateSeconds(responseBytes + 40) ?: return null
+        val compact = settings.nomadToken.length >= 16 && (if (map) settings.compactMap else settings.compactText)
+        return if (compact) base * 0.78 else base   // Rohdatenpakete: rund ein Fünftel weniger Funkzeit
+    }
 }
 
 data class ArticleView(val book: String, val path: String, val title: String, val text: String, val total: Int, val summary: Boolean)

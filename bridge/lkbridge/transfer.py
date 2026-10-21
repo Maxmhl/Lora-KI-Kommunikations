@@ -7,8 +7,8 @@ import time
 from collections import OrderedDict, deque
 from typing import Awaitable, Callable
 
-from . import codec
-from .airtime import RadioParams, text_airtime_s
+from . import codec, rawframe
+from .airtime import RadioParams, airtime_s, raw_packet_bytes, text_airtime_s
 from .limiter import DutyCycleLimiter
 
 log = logging.getLogger("lkbridge.transfer")
@@ -71,18 +71,39 @@ class Receiver:
 
 
 class Sender:
-    """Sendet ein Envelope fragmentiert, hält Duty-Cycle ein und wartet auf ACKs."""
+    """Sendet ein Envelope fragmentiert, hält Duty-Cycle ein und wartet auf ACKs.
+
+    Standardweg: verschlüsselte MeshCore-Textnachrichten (LKP). Optional (``prefer_raw``): unverschlüsselte, per HMAC beglaubigte
+    Rohdatenpakete (LKR, kompakter). Funktioniert der Rohdatenweg nicht (Firmware ohne Unterstützung, kein Pfad, keine ACKs), fällt
+    der Sender automatisch auf den Textweg zurück und merkt sich das für eine Weile."""
+
+    RAW_PAUSE_AFTER_FAILS = 2
+    RAW_PAUSE_S = 3600.0
 
     def __init__(self, send_text: SendText, limiter: DutyCycleLimiter, radio: RadioParams,
                  ack_timeout_s: float = 90.0, max_retries: int = 6,
-                 on_progress: Callable[[str, int, int, int], None] | None = None):
+                 on_progress: Callable[[str, int, int, int], None] | None = None,
+                 raw_send: Callable[[str, bytes], Awaitable[None]] | None = None,
+                 raw_path_len: Callable[[str], int] | None = None, raw_key: bytes | None = None,
+                 clock: Callable[[], float] = time.time):
         self._send_text = send_text
         self.limiter = limiter
         self.radio = radio
         self.ack_timeout_s = ack_timeout_s
         self.max_retries = max_retries
         self.on_progress = on_progress
+        self._raw_send, self._raw_path_len, self._raw_key = raw_send, raw_path_len or (lambda peer: 0), raw_key
+        self._clock = clock
+        self._raw_fails: dict[str, int] = {}
+        self._raw_paused_until: dict[str, float] = {}
         self._waiting: dict[tuple[str, int], asyncio.Queue] = {}
+
+    @property
+    def raw_available(self) -> bool:
+        return self._raw_send is not None and self._raw_key is not None
+
+    def raw_usable(self, peer: str) -> bool:
+        return self.raw_available and self._clock() >= self._raw_paused_until.get(peer, 0.0)
 
     async def tx(self, peer: str, text: str) -> None:
         """Einzelnes Textpaket unter Duty-Cycle-Kontrolle senden."""
@@ -96,13 +117,50 @@ class Sender:
                 await asyncio.sleep(5)
         raise ConnectionError("Node nicht erreichbar")
 
+    async def tx_raw(self, peer: str, frame: bytes) -> None:
+        assert self._raw_send is not None
+        await self.limiter.acquire(airtime_s(raw_packet_bytes(len(frame), self._raw_path_len(peer)), self.radio))
+        await self._raw_send(peer, frame)
+
     def on_ack(self, peer: str, f: codec.Frame) -> None:
         q = self._waiting.get((peer, f.msg_id))
         if q is not None:
             q.put_nowait(f)
 
-    async def send(self, peer: str, msg_id: int, envelope: bytes) -> bool:
+    async def send(self, peer: str, msg_id: int, envelope: bytes, prefer_raw: bool = False) -> bool:
+        if prefer_raw and self.raw_usable(peer):
+            chunks = [envelope[i:i + rawframe.MAX_CHUNK] for i in range(0, len(envelope), rawframe.MAX_CHUNK)] or [b""]
+            key = self._raw_key
+
+            async def tx_frame(i, total, chunk, poll):
+                frame = rawframe.build(key, msg_id, i, total, chunk, poll)
+                await self.tx_raw(peer, frame)
+                return frame
+
+            try:
+                ok = await self._run(peer, msg_id, chunks, tx_frame, retries=1)
+            except Exception as e:  # kein Pfad, Firmware lehnt ab, …
+                log.info("Rohdatenweg nicht nutzbar (%s) – wechsle auf Textweg", e)
+                ok = False
+            if ok:
+                self._raw_fails[peer] = 0
+                return True
+            self._raw_fails[peer] = self._raw_fails.get(peer, 0) + 1
+            if self._raw_fails[peer] >= self.RAW_PAUSE_AFTER_FAILS:
+                self._raw_paused_until[peer] = self._clock() + self.RAW_PAUSE_S
+                log.warning("Rohdatenweg zu %s %d-mal ohne Bestätigung – für %d min pausiert", peer, self._raw_fails[peer], self.RAW_PAUSE_S // 60)
+            msg_id = (msg_id + 1) % (codec.MAX_NUM + 1)  # neue ID: Teilstand des Rohdatenversuchs nicht vermischen
         chunks = codec.fragment(envelope)
+
+        async def tx_text(i, total, chunk, poll):
+            text = codec.format_data(msg_id, i, total, chunk, poll)
+            await self.tx(peer, text)
+            return text
+
+        return await self._run(peer, msg_id, chunks, tx_text, retries=self.max_retries)
+
+    async def _run(self, peer: str, msg_id: int, chunks: list[bytes], tx_frame, retries: int) -> bool:
+        """Selective Repeat mit Fenster; [tx_frame] sendet ein Fragment und liefert das gesendete Paket (für Poll-Wiederholung)."""
         total = len(chunks)
         key = (peer, msg_id)
         q: asyncio.Queue = asyncio.Queue()
@@ -112,22 +170,22 @@ class Sender:
             queue = deque(range(total))
             while len(received) < total:
                 batch = [queue.popleft() for _ in range(min(codec.WINDOW, len(queue)))]
-                texts = [codec.format_data(msg_id, i, total, chunks[i], poll=(n == len(batch) - 1))
-                         for n, i in enumerate(batch)]
-                for t in texts:
-                    await self.tx(peer, t)
+                sent = []
+                for n, i in enumerate(batch):
+                    sent.append(await tx_frame(i, total, chunks[i], n == len(batch) - 1))
                     if self.on_progress:
                         self.on_progress(peer, msg_id, len(received), total)
-                retries = self.max_retries
+                left = retries
                 while True:
                     try:
                         ack = await asyncio.wait_for(q.get(), self.ack_timeout_s)
                     except asyncio.TimeoutError:
-                        retries -= 1
-                        if retries < 0:
+                        left -= 1
+                        if left < 0:
                             log.error("Keine ACK-Antwort von %s für %d", peer, msg_id)
                             return False
-                        await self.tx(peer, texts[-1])  # Poll wiederholen
+                        i = batch[-1]
+                        await tx_frame(i, total, chunks[i], True)  # Poll wiederholen
                         continue
                     if ack.type == codec.T_ABORT:
                         return False

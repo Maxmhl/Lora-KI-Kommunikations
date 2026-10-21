@@ -37,6 +37,10 @@ class NomadViewModel(app: Application) : AndroidViewModel(app) {
 
     val conn = MutableStateFlow<String?>(null)
     val privacy = MutableStateFlow(settings.privacyMode)
+    val compactText = MutableStateFlow(settings.compactText)
+    val compactMap = MutableStateFlow(settings.compactMap)
+    fun setCompactText(on: Boolean) { settings.compactText = on; compactText.value = on; g.engine.applyCompactSettings() }
+    fun setCompactMap(on: Boolean) { settings.compactMap = on; compactMap.value = on; g.engine.applyCompactSettings() }
     fun setPrivacy(on: Boolean) { privacy.value = on; g.setPrivacy(on) }
     fun wipeAll() = g.wipeAllLocal()
     fun clearWebData() = g.clearWebData()
@@ -44,6 +48,7 @@ class NomadViewModel(app: Application) : AndroidViewModel(app) {
     fun saveServer(url: String, token: String) {
         settings.nomadUrl = url
         settings.nomadToken = token
+        g.engine.applyCompactSettings()
         NomadWork.scheduleSync(getApplication(), settings)
     }
 

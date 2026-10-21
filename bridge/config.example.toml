@@ -14,6 +14,7 @@ baud = 115200
 # cr = 8
 margin = 0.8                        # nutzt nur 80 % des erlaubten Duty-Cycle (Reserve für Adverts/ACKs)
 ack_timeout_s = 90
+# raw_enabled = true                # Kompaktmodus für öffentliche Antworten erlauben (braucht [gateway] token als gemeinsames Geheimnis)
 
 [llm]
 base_url = "http://127.0.0.1:11434"

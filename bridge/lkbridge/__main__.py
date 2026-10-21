@@ -9,6 +9,7 @@ from .limiter import DutyCycleLimiter
 from .gateway import Gateway
 from .llm import NomadKnowledgeClient, OllamaClient
 from .nomad_ops import NomadOps
+from . import rawframe
 from .nomad_sync import DEFAULT_EXCLUDE, Catalog
 from .mc_transport import MeshCoreTransport
 from .server import Bridge
@@ -42,7 +43,13 @@ async def run(cfg: dict) -> None:
 
     limiter = DutyCycleLimiter(duty, float(rc.get("margin", 0.8)),
                                state_file=cfg.get("state_file", "limiter-state.json"))
-    sender = Sender(tr.send_text, limiter, radio, ack_timeout_s=float(rc.get("ack_timeout_s", 90)))
+    # Kompaktmodus: gemeinsames Geheimnis = Gateway-Token (muss in der App als Token eingetragen sein)
+    secret = cfg.get("gateway", {}).get("token") or ""
+    raw_key = rawframe.derive_key(secret) if len(secret) >= 16 and rc.get("raw_enabled", True) else None
+    sender = Sender(tr.send_text, limiter, radio, ack_timeout_s=float(rc.get("ack_timeout_s", 90)),
+                    raw_send=tr.send_raw if raw_key else None, raw_path_len=tr.raw_path_len, raw_key=raw_key)
+    if raw_key:
+        log.info("Kompaktmodus (Rohdatenpakete, beglaubigt) verfügbar – wird nur genutzt, wenn die App ihn anfordert")
     lc = cfg.get("llm", {})
     llm = OllamaClient(lc.get("base_url", "http://127.0.0.1:11434"), lc.get("model", "llama3.1"),
                        int(lc.get("num_predict", 400)))

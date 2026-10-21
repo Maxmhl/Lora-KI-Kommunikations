@@ -31,6 +31,9 @@ object Airtime {
         return 1 + 1 + pathLen + 2 + 2 + cipher
     }
 
+    /** Funkpaket eines Rohdatenpakets: Kopf(1) + Pfadlänge(1) + Pfad + Nutzdaten. */
+    fun rawPacketBytes(frameLen: Int, pathLen: Int = 0) = 2 + pathLen + frameLen
+
     fun textSeconds(text: String, r: RadioParams): Double =
         seconds(meshPacketBytes(text.toByteArray().size), r)
 

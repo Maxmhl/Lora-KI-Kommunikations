@@ -101,8 +101,9 @@ rendert das Gewünschte und schickt nur das zurück – nichts wird auf dem Hand
 | **Wiki: Suche** | bis zu 8 Titel (Titeltreffer + Volltext aus NOMADs Kiwix) | 100–300 Byte |
 | **Wiki: Artikel öffnen** | zuerst die ersten ~1500 Zeichen (Text ohne Tabellen/Fußnoten), „Mehr lesen“ blättert weiter | 0,7–1 KB je Block |
 | **Wiki: Kurzfassung (KI)** | Ollama fasst den Artikel in wenigen Sätzen zusammen | 300–600 Byte |
-| **Karte: Ausschnitt um (Breite, Länge)** | winziges Bild (WebP/PNG) aus den PMTiles: Straßen, Wasser, Grün, Ortsnamen | 1,5 KB (96 px) · 2,8 KB (128 px) · 4,6 KB (160 px) · 11 KB (256 px) |
-| **Karte: N/S/W/O, Zoom ±** | weitere Ausschnitte, bereits gesehene kommen aus dem Arbeitsspeicher | wie oben |
+| **Karte: Ausschnitt um deine Position, wählbarer Radius** (250 m … 25 km) | winziges Bild (WebP/PNG): Straßen, Wasser, Grün, Ortsnamen, **deine Position als Punkt**, dazu eine Liste der Orte im Ausschnitt | 1,5 KB (96 px) · 2,8 KB (128 px) · 4,6 KB (160 px) · 11 KB (256 px) |
+| **Karte: Detailkarte** | Ort im Bild antippen oder aus der Ortsliste wählen → Karte mit kleinerem Radius um diesen Punkt (deine Position bleibt eingezeichnet) | wie oben |
+| **Karte: N/S/W/O, Radius ±, vorherige Karte** | weitere Ausschnitte; bereits gesehene kommen aus dem Arbeitsspeicher | wie oben |
 | **KI-Chat mit Wissensdatenbank** | Antwort + kompakte Quellenzeile („Quellen: …“) | wenige 100 Byte |
 
 Die App zeigt **vor** jeder Anfrage die geschätzte Wartezeit (Sendepausen!). Bei 10 % Duty-Cycle sind das grob 2–3 Minuten je KB.
@@ -121,3 +122,25 @@ zeigen keinen Inhalt. Beim Einschalten werden bereits gespeicherte Chats und Off
 Gespeichert bleiben **nur Verbindungseinstellungen** und das **Sendezeit-Protokoll** (Zeitpunkte und Dauer, kein Inhalt) – es sorgt dafür, dass die
 gesetzlichen Sendepausen auch nach einem App-Neustart eingehalten werden.
 Nicht in der Hand der App: der MeshCore-Node und der Server können Nachrichten ihrerseits speichern.
+
+## Karte: Position, Radius, Detailkarten
+1. **Position**: *Node-GPS* (vom Node gemeldete Position – GPS am Node muss aktiv sein und einen Fix haben; die App fragt den Node dafür neu ab),
+   *Handy-GPS* oder *manuell*. Sie geht (verschlüsselt) mit der Kartenanfrage zum Server, der sie in die Karte einzeichnet.
+2. **Radius** (Meter vom Mittelpunkt bis zum Bildrand) und Detailgrad (Bildgröße) wählen – der Server skaliert die Vektorkarte stufenlos.
+3. **Ort antippen** oder **aus der Ortsliste wählen** → Detailkarte mit nächstkleinerem Radius um diesen Punkt. Vorherige Karten bleiben für „Zurück“ im Arbeitsspeicher.
+
+## Kompaktmodus (experimentell): schneller für öffentliche Inhalte
+Verschlüsselte MeshCore-Textnachrichten tragen nur ~118 Nutzbyte je Funkpaket (Base91-Kodierung, 16-Byte-AES-Blöcke, Empfänger-/MAC-Kopf).
+Wikipedia-Text und Kartenbilder sind **öffentliche Inhalte** – dafür kann der Server stattdessen **Rohdatenpakete** (`CMD_SEND_RAW_DATA`) senden:
+148 Nutzbyte je Paket, ohne Kodierung und Padding → **rund 20 % weniger Funkzeit**.
+
+* **Unverschlüsselt, aber beglaubigt**: jedes Paket trägt einen 4-Byte-HMAC mit dem gemeinsamen Geheimnis (dein Gateway-Token, mind. 16 Zeichen).
+  Mithörende können den Inhalt lesen, aber keine gefälschten Antworten einschleusen (verworfen, siehe `LkRaw`/`rawframe.py`).
+* **Bleibt verschlüsselt**: Anfragen (inkl. deiner Position), KI-Chats und alle ACKs.
+* **Karten separat**: Ein Kartenausschnitt um deine Position verrät Mithörenden, wo du bist – deshalb eigener Schalter, standardmäßig aus.
+* **Voraussetzungen/Grenzen**: MeshCore-Firmware mit Rohdaten-Unterstützung auf beiden Nodes; Rohdaten gehen nur **direkt** (Nachbarn) oder über einen
+  **bekannten Pfad** (kein Flooding). Fehlt Unterstützung/Pfad oder kommen keine ACKs, wechselt der Server **automatisch auf den verschlüsselten Weg**
+  und pausiert den Kompaktmodus für eine Stunde, wenn es zweimal hintereinander nicht klappt.
+* **Nicht auf echter Hardware getestet.** Rahmenformat, Echtheitsprüfung, Aufteilung, Rückfall und Duty-Cycle sind getestet (Python + Kotlin,
+  byte-identisch); ob deine Firmware die Rohdatenpakete wie erwartet liefert, zeigt erst ein Test mit den Nodes.
+* Beide Seiten: `[gateway] token` in der Bridge = Token in der App; `raw_enabled = false` in der Bridge schaltet den Modus serverseitig ab.

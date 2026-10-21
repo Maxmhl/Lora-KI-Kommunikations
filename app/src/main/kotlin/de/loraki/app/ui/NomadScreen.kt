@@ -148,6 +148,26 @@ private fun ServerTab(vm: NomadViewModel) {
                 Text("Im lokalen WLAN/VPN nutzt die App das Gateway (schnell, volle NOMAD-Oberfläche). Außerhalb läuft alles per LoRa als gezielte Anfrage.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        val compactText by vm.compactText.collectAsState()
+        val compactMap by vm.compactMap.collectAsState()
+        val hasSecret = token.length >= 16
+        Card {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Kompaktmodus (experimentell)", style = MaterialTheme.typography.titleSmall)
+                Text("Öffentliche Antworten (Wikipedia, Karten) werden als unverschlüsselte Rohdatenpakete gesendet: weniger Overhead, rund 20 % weniger Funkzeit. " +
+                    "Sie sind durch eine Prüfsumme mit dem gemeinsamen Geheimnis (dein Token, mind. 16 Zeichen) vor Fälschung geschützt, aber mitlesbar. " +
+                    "Anfragen, KI-Chats und deine Position bleiben verschlüsselt. Braucht ein MeshCore-Firmware-Update mit Rohdaten-Unterstützung und einen direkten Pfad zum Server; " +
+                    "klappt es nicht, wechselt der Server automatisch auf den verschlüsselten Weg.", fontSize = 12.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Wikipedia-Antworten kompakt", Modifier.weight(1f)); Switch(compactText && hasSecret, { vm.setCompactText(it) }, enabled = hasSecret)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text("Kartenausschnitte kompakt"); Text("Mithörende sehen, welche Gegend du abrufst", fontSize = 11.sp, color = MaterialTheme.colorScheme.error) }
+                    Switch(compactMap && hasSecret, { vm.setCompactMap(it) }, enabled = hasSecret)
+                }
+                if (!hasSecret) Text("Zuerst oben ein Token (mind. 16 Zeichen, gleich wie in der Bridge) eintragen.", fontSize = 11.sp)
+            }
+        }
         Card {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

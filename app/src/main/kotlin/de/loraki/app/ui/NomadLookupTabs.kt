@@ -239,12 +239,12 @@ fun MapRequestTab(vm: NomadLookupViewModel) {
                 Box {
                     OutlinedButton({ qMenu = true }) { Text(quality.label) }
                     DropdownMenu(qMenu, { qMenu = false }) {
-                        NomadRequest.MapQuality.entries.forEach { q -> DropdownMenuItem({ Text("${q.label} · ca. ${q.approxBytes / 1000.0} KB" + eta(vm.access.estimateSeconds(q.approxBytes))) }, { vm.setQuality(q); qMenu = false }) }
+                        NomadRequest.MapQuality.entries.forEach { q -> DropdownMenuItem({ Text("${q.label} · ca. ${q.approxBytes / 1000.0} KB" + eta(vm.access.estimateSeconds(q.approxBytes, map = true))) }, { vm.setQuality(q); qMenu = false }) }
                     }
                 }
             }
             Button({ position?.let { vm.requestMap(it.lat, it.lon) } }, enabled = !busy && mode != NomadMode.NONE && position != null, modifier = Modifier.fillMaxWidth()) {
-                Text("Karte um meine Position anfordern" + eta(vm.access.estimateSeconds(quality.approxBytes + 280)))
+                Text("Karte um meine Position anfordern" + eta(vm.access.estimateSeconds(quality.approxBytes + 280, map = true)))
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
         }
@@ -269,7 +269,7 @@ fun MapRequestTab(vm: NomadLookupViewModel) {
                 }
                 target?.let { (la, lo) ->
                     Button({ vm.detailAt(la, lo) }, enabled = !busy, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                        Text("Detailkarte hier (Radius ${m.request.radius.finer().label})" + eta(vm.access.estimateSeconds(quality.approxBytes + 280)))
+                        Text("Detailkarte hier (Radius ${m.request.radius.finer().label})" + eta(vm.access.estimateSeconds(quality.approxBytes + 280, map = true)))
                     }
                 }
                 if (m.section.places.isNotEmpty()) {

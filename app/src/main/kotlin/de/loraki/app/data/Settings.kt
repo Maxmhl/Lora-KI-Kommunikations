@@ -42,5 +42,9 @@ class Settings(ctx: Context) {
     var nomadChatSession: String? get() = p.getString("nomadChatSession", null); set(v) = p.edit { putString("nomadChatSession", v) }
     /** Privatmodus (Standard): nichts von Chats, Anhängen, Karten oder Bibliotheken wird auf dem Handy gespeichert. */
     var privacyMode: Boolean get() = p.getBoolean("privacy", true); set(v) = p.edit { putBoolean("privacy", v) }
+    /** Kompaktmodus (experimentell): öffentliche Antworten als unverschlüsselte, beglaubigte Rohdatenpakete – ca. 20 % schneller. */
+    var compactText: Boolean get() = p.getBoolean("compactText", false); set(v) = p.edit { putBoolean("compactText", v) }
+    /** Auch Kartenausschnitte kompakt: Mithörende sehen dann, welche Gegend du abrufst. */
+    var compactMap: Boolean get() = p.getBoolean("compactMap", false); set(v) = p.edit { putBoolean("compactMap", v) }
     var wantConnected: Boolean get() = p.getBoolean("want", false); set(v) = p.edit { putBoolean("want", v) }
 }

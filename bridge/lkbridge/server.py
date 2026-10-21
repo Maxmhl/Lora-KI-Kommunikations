@@ -39,7 +39,8 @@ class Bridge:
         self._models_file = Path(cfg.get("model_state_file", "models-state.json"))
         self.conv_models: dict[str, str]
         self.conv_kb: dict[str, bool]
-        self.conv_models, self.conv_kb = self._load_state()
+        self.peer_raw: dict[str, dict[str, bool]]
+        self.conv_models, self.conv_kb, self.peer_raw = self._load_state()
         self._model_cache: tuple[float, list[tuple[str, bool]]] | None = None
         self.max_ctx_chars = int(cfg.get("limits", {}).get("max_context_chars", 12000))
         self.history: dict[tuple[str, int], list[dict]] = {}
@@ -49,18 +50,18 @@ class Bridge:
         self._worker: asyncio.Task | None = None
 
     # ------------------------------------------------------------ Modelle
-    def _load_state(self) -> tuple[dict[str, str], dict[str, bool]]:
+    def _load_state(self) -> tuple[dict[str, str], dict[str, bool], dict[str, dict[str, bool]]]:
         try:
             d = json.loads(self._models_file.read_text())
         except (OSError, ValueError):
-            return {}, {}
-        if "models" in d or "kb" in d:
-            return dict(d.get("models", {})), dict(d.get("kb", {}))
-        return d, {}  # älteres Format: nur Modelle
+            return {}, {}, {}
+        if "models" in d or "kb" in d or "raw" in d:
+            return dict(d.get("models", {})), dict(d.get("kb", {})), dict(d.get("raw", {}))
+        return d, {}, {}  # älteres Format: nur Modelle
 
     def _save_models(self) -> None:
         try:
-            self._models_file.write_text(json.dumps({"models": self.conv_models, "kb": self.conv_kb}))
+            self._models_file.write_text(json.dumps({"models": self.conv_models, "kb": self.conv_kb, "raw": self.peer_raw}))
         except OSError as e:
             log.warning("Auswahl nicht speicherbar: %s", e)
 
@@ -161,13 +162,22 @@ class Bridge:
                     opts = dict(kv.split("=", 1) for kv in job[3].split(";") if "=" in kv)
                     if "kb" in opts:
                         self.conv_kb[self._mkey(peer, conv)] = opts["kb"] == "1"
-                        self._save_models()
+                    # Kompaktmodus (unverschlüsselte, beglaubigte Rohdatenpakete) – gilt je Handy, nicht je Chat
+                    if "raw" in opts or "rawmap" in opts:
+                        cur = self.peer_raw.setdefault(peer, {})
+                        if "raw" in opts:
+                            cur["text"] = opts["raw"] == "1"
+                        if "rawmap" in opts:
+                            cur["map"] = opts["rawmap"] == "1"
+                    self._save_models()
                 elif kind == "nomad":
                     if self.ops is None:
                         resp = b"error\tNOMAD ist auf dem Server nicht konfiguriert"
                     else:
                         resp = await self.ops.handle(job[3])
-                    await self._reply_bytes(peer, conv, codec.KIND_NOMAD_RESP, resp)
+                    # Öffentliche Inhalte dürfen auf Wunsch unverschlüsselt/kompakt gehen; Karten extra, weil sie den Standort verraten
+                    cls = "map" if resp.startswith(b"ok\tmap") else "text"
+                    await self._reply_bytes(peer, conv, codec.KIND_NOMAD_RESP, resp, raw=self.peer_raw.get(peer, {}).get(cls, False))
             except Exception as e:
                 log.exception("Fehler bei %s", kind)
                 await self._reply(peer, conv, codec.KIND_STATUS, f"Fehler auf dem Server: {e}")
@@ -226,8 +236,8 @@ class Bridge:
     async def _reply(self, peer: str, conv: int, kind: int, text: str) -> None:
         await self._reply_bytes(peer, conv, kind, text.encode())
 
-    async def _reply_bytes(self, peer: str, conv: int, kind: int, payload: bytes) -> None:
+    async def _reply_bytes(self, peer: str, conv: int, kind: int, payload: bytes, raw: bool = False) -> None:
         env = codec.build_envelope(kind, conv, payload)
-        ok = await self.sender.send(peer, self._next_id(peer), env)
+        ok = await self.sender.send(peer, self._next_id(peer), env, prefer_raw=raw)
         if not ok:
             log.error("Antwort an %s nicht zugestellt", peer)

@@ -17,6 +17,7 @@ import de.loraki.app.data.Store
 import de.loraki.core.Airtime
 import de.loraki.core.DutyCycleLimiter
 import de.loraki.core.LimiterState
+import de.loraki.core.LkRaw
 import de.loraki.core.Lkp
 import de.loraki.core.RadioParams
 import de.loraki.core.Receiver
@@ -69,7 +70,8 @@ class Engine(
     init {
         createChannel()
         scope.launch { session.texts.collect { onText(it.pubKeyPrefixHex, it.text) } }
-        scope.launch { session.state.collect { if (it == LinkState.READY) configureRadio() } }
+        scope.launch { session.rawFrames.collect { onRaw(it) } }
+        scope.launch { session.state.collect { if (it == LinkState.READY) { configureRadio(); lastCompactOpts = null; applyCompactSettings() } } }
         scope.launch { worker() }
         // wartende Nachrichten aus früheren Sitzungen erneut einreihen
         store.messages.value.filter { it.outgoing && it.status == Status.QUEUED }.forEach { outbox.trySend(it.id) }
@@ -243,6 +245,33 @@ class Engine(
                 else -> Status.DELIVERED
             }, acked = if (ok) it.total else it.acked)
         }
+    }
+
+    // ------------------------------------------------------------ Kompaktmodus (unverschlüsselte, beglaubigte Rohdatenpakete)
+
+    private var lastCompactOpts: String? = null
+
+    /** Gemeinsames Geheimnis = Gateway-Token (mind. 16 Zeichen); ohne dieses bleibt der Kompaktmodus aus. */
+    private fun compactKey(): ByteArray? = settings.nomadToken.takeIf { it.length >= 16 }?.let { LkRaw.deriveKey(it) }
+
+    /** Teilt dem Server mit, welche Antworten er kompakt senden darf (je Handy, ein Funkpaket). */
+    fun applyCompactSettings() {
+        val peer = settings.serverKeyHex?.take(12) ?: return
+        val snd = sender ?: return
+        val enabled = compactKey() != null
+        val opts = "raw=${if (enabled && settings.compactText) 1 else 0};rawmap=${if (enabled && settings.compactMap) 1 else 0}"
+        if (opts == lastCompactOpts || (lastCompactOpts == null && opts == "raw=0;rawmap=0")) { lastCompactOpts = opts; return }
+        lastCompactOpts = opts
+        scope.launch { runCatching { snd.send(peer, newMsgId(), Lkp.buildEnvelope(Lkp.KIND_SET_OPTS, 0, opts.toByteArray())) } }
+    }
+
+    private fun onRaw(payload: ByteArray) {
+        val key = compactKey() ?: return
+        val peer = settings.serverKeyHex?.take(12) ?: return
+        val frame = LkRaw.parse(key, payload) ?: return     // Fremdpakete, Störungen und Fälschungen werden verworfen
+        val r = receiver.onFrame(peer, frame)
+        r.reply?.let { reply -> scope.launch { runCatching { sender?.tx(peer, reply) } } }  // ACK geht verschlüsselt als Textnachricht zurück
+        r.envelope?.let { onEnvelope(it) }
     }
 
     // ------------------------------------------------------------ Empfangen

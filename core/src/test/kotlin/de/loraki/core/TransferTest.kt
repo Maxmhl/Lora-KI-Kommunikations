@@ -132,6 +132,28 @@ class CompanionTest {
         assertEquals(2.0, m.snr)
     }
 
+    @Test fun parseRawPush() {
+        val data = byteArrayOf(0x84.toByte(), 12, (-95).toByte(), 0xFF.toByte()) + byteArrayOf(1, 2, 3, 4)
+        val r = Companion.parse(data) as Companion.Incoming.RawData
+        assertEquals(3.0, r.snr); assertEquals(-95, r.rssi)
+        assertContentEquals(byteArrayOf(1, 2, 3, 4), r.payload)
+    }
+
+    @Test fun rawFramesFeedTheSameReceiver() {
+        val key = LkRaw.deriveKey("geheimnis-geheimnis")
+        val env = Lkp.buildEnvelope(Lkp.KIND_NOMAD_RESP, 9, ByteArray(400) { it.toByte() })
+        val chunks = env.toList().chunked(LkRaw.MAX_CHUNK).map { it.toByteArray() }
+        val rx = Receiver()
+        var done: ByteArray? = null
+        for ((i, c) in chunks.withIndex()) {
+            val f = LkRaw.parse(key, LkRaw.build(key, 5, i, chunks.size, c, poll = i == chunks.size - 1))!!
+            val r = rx.onFrame("srv", f)
+            r.envelope?.let { done = it }
+        }
+        assertContentEquals(env, done)
+        assertTrue(Airtime.rawPacketBytes(160) < Airtime.meshPacketBytes(Lkp.TEXT_MAX))
+    }
+
     @Test fun parseSelfInfo() {
         val bb = java.nio.ByteBuffer.allocate(1 + 3 + 32 + 8 + 4 + 8 + 2 + 4).order(java.nio.ByteOrder.LITTLE_ENDIAN)
         bb.put(5).put(1).put(14).put(22).put(ByteArray(32)).putInt(49_407_500).putInt(8_693_500).put(ByteArray(4))

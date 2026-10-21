@@ -51,3 +51,29 @@ class MeshCoreTransport:
         ev = await self.mc.commands.send_msg(contact, text)
         if ev.type == EventType.ERROR:
             raise ConnectionError(f"Node meldet Fehler: {ev.payload}")
+
+    # ------------------------------------------------------------ Rohdaten (unverschlüsselt, direkter Pfad)
+
+    def _raw_path(self, peer: str) -> bytes:
+        c = self.mc.get_contact_by_key_prefix(peer) if self.mc else None
+        if c is None:
+            raise LookupError("Kontakt unbekannt")
+        n = c.get("out_path_len", -1)
+        if n is None or n < 0:
+            raise LookupError("kein bekannter Pfad (Flood) – Rohdaten brauchen einen direkten Pfad")
+        if c.get("out_path_hash_mode", 0) not in (0, None):
+            raise LookupError("Mehrbyte-Pfade werden für Rohdaten nicht unterstützt")
+        return bytes.fromhex(c.get("out_path") or "")[:n]
+
+    def raw_path_len(self, peer: str) -> int:
+        try:
+            return len(self._raw_path(peer))
+        except LookupError:
+            return 0
+
+    async def send_raw(self, peer: str, frame: bytes) -> None:
+        from meshcore import EventType
+
+        ev = await self.mc.commands.send_raw_data(frame, self._raw_path(peer))
+        if ev.type == EventType.ERROR:
+            raise ConnectionError(f"Node lehnt Rohdaten ab: {ev.payload}")

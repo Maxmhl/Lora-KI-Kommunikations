@@ -21,7 +21,7 @@ Bilder und Dateien. Große Objekte werden fragmentiert und unter Einhaltung des 
 ## Nomad-Tab (NOMAD per LoRa und im WLAN)
 Auf dem Server läuft **vollständiges Project NOMAD** (im Intranet direkt unter `:8080`). Im **lokalen WLAN** zeigt die App über **eine abgesicherte Schnittstelle (Gateway der Bridge)** dieselbe Oberfläche wie der Browser.
 **Ohne WLAN läuft NOMAD komplett per LoRa** als gezielte Anfrage: du fragst *einen Wikipedia-Artikel* oder *einen Kartenausschnitt* an und der Server
-schickt nur dieses kleine Ergebnis (Karte als 1,5–5-KB-Bild, Artikel in Blöcken, optional KI-Kurzfassung). Standardmäßig wird **nichts auf dem Handy
+schickt nur dieses kleine Ergebnis (Karte um deine GPS-Position mit wählbarem Radius als 1,5–5-KB-Bild, Detailkarten per Antippen, Artikel in Blöcken, optional KI-Kurzfassung; optionaler Kompaktmodus für öffentliche Inhalte). Standardmäßig wird **nichts auf dem Handy
 gespeichert** (Privatmodus). Optional (Privatmodus aus) lassen sich Karten und Bibliotheken auch einmal laden und im Intervall aktualisieren. Education-Plattform und Videos werden nicht
 angeboten. Zusätzlich gibt es im Nomad-Tab einen **nativen Chat mit der NOMAD-KI** (Wissensdatenbank, Quellen, gleiche Sitzungen wie in der Weboberfläche). Einrichtung: [docs/SERVER.md](docs/SERVER.md).
 

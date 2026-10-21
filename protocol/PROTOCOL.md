@@ -30,9 +30,15 @@ crc32(4, BE) | flags(1) | kind(1) | conv(1) | payload
 
 ## NOMAD-Anfragen (Kind 11 → 12)
 `conv` ist hier die Anfragenummer (0–255) und wird in der Antwort wiederholt. Nutzlast der Anfrage: Tab-getrennter Text, z. B.
-`article<TAB>buch<TAB>pfad<TAB>offset<TAB>länge<TAB>text|summary`, `search`, `books`, `mapinfo`, `map<TAB>lat<TAB>lon<TAB>zoom<TAB>größe<TAB>farben`.
-Antwort: erste Zeile `ok<TAB>art…` oder `error<TAB>meldung`, danach Text bzw. Bilddaten (Kartenausschnitt als WebP/PNG). Dasselbe Format nutzt das
+`article<TAB>buch<TAB>pfad<TAB>offset<TAB>länge<TAB>text|summary`, `search`, `books`, `mapinfo`, `map<TAB>lat<TAB>lon<TAB>radius_m<TAB>größe<TAB>farben[<TAB>marklat<TAB>marklon]`.
+Antwort: erste Zeile `ok<TAB>art…` oder `error<TAB>meldung`, danach Text bzw. Bilddaten. Karte: Kopf `ok map fmt region zoom größe minlon minlat maxlon maxlat m/px bildbytes`, danach Bild und Ortsliste (`name lat lon art` je Zeile). Dasselbe Format nutzt das
 WLAN-Gateway (`POST /lk/nomad`). Details: `bridge/lkbridge/nomad_ops.py`, `core/.../NomadRequest.kt`.
+
+## LKR – Rohdatenrahmen (Server → Handy, optional)
+Für öffentliche Antworten (Kind 12) per `CMD_SEND_RAW_DATA`, unverschlüsselt aber beglaubigt:
+`0xA7 | (Version<<4 | Poll) | msgId(2) | idx(2) | total(2) | Daten (≤ 148) | HMAC-SHA256(Schlüssel, alles davor)[:4]`, Schlüssel = `SHA256("lkr1|" + Geheimnis)`.
+Gleiche Fensterlogik und Bestätigungen wie bei LKP (die ACKs gehen als Textnachricht zurück). Funkpaket = 2 + Pfadlänge + Rahmen Byte.
+Aktivierung je Handy über Kind 10 (`raw=1` Wiki-Text, `rawmap=1` Karten). Rückfall auf LKP-Text bei Fehlern. Referenz: `bridge/lkbridge/rawframe.py`, `core/.../LkRaw.kt`.
 
 ## Frames (je eine MeshCore-Textnachricht, nur ASCII)
 Zahlen sind 12 Bit in 2 Zeichen des Alphabets `A–Z a–z 0–9 + /` (Index = Wert, 0–4095).

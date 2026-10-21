@@ -206,3 +206,68 @@ async def test_kb_option_selects_knowledge_client_per_conversation():
     await settle()
     await b._answer(PEER, 5, "nochmal", [])
     assert len(kb.calls) == 1 and len(llm.calls) == 2
+
+
+async def settle_long():
+    """Wartet auf echte Zeit: Antworten ohne ACK laufen in den (kurzen) Timeout, bevor der nächste Auftrag drankommt."""
+    await asyncio.sleep(0.5)
+
+
+def make_raw():
+    from lkbridge import rawframe
+
+    c = VClock()
+    tr, llm = FakeTransport(), FakeLLM()
+    raw_out = []
+
+    async def raw_send(peer, frame):
+        raw_out.append(frame)
+
+    lim = DutyCycleLimiter(0.10, clock=c, sleep=c.sleep)
+    sender = Sender(tr.send_text, lim, RadioParams(), ack_timeout_s=0.05, max_retries=1,
+                    raw_send=raw_send, raw_key=rawframe.derive_key("geheimnis-geheimnis"), clock=c)
+    b = Bridge({"access": {"allowed_peers": [PEER]}, "model_state_file": str(Path(tempfile.mkdtemp()) / "m.json"), "llm": {"model": "llama3.1"}},
+               tr, llm, sender, Receiver())
+    b.start()
+    return b, tr, raw_out
+
+
+async def test_raw_option_is_per_peer_and_map_has_its_own_switch():
+    b, tr, raw_out = make_raw()
+
+    class Ops:
+        async def handle(self, payload):
+            return b"ok\tmap\twebp\tr\t14\t96\t0\t0\t1\t1\t5\t3\nabc" if payload.startswith(b"map") else b"ok\tbooks\nwiki\tWiki\teng\t5"
+    b.ops = Ops()
+    # ohne Option: alles verschlüsselt per Text
+    await feed(b, codec.build_envelope(codec.KIND_NOMAD_REQ, 1, b"books"), 1)
+    await settle_long()
+    assert not raw_out and any(codec.parse_frame(t).type == codec.T_POLL for t in tr.out)
+
+    # raw=1: Wiki-Antworten per Rohdaten, Karten weiterhin verschlüsselt
+    await feed(b, codec.build_envelope(codec.KIND_SET_OPTS, 0, b"raw=1"), 2)
+    await settle_long()
+    assert b.peer_raw[PEER] == {"text": True}
+    n_text = len(tr.out)
+    await feed(b, codec.build_envelope(codec.KIND_NOMAD_REQ, 2, b"books"), 3)
+    await settle_long()
+    assert raw_out and all(f[0] == 0xA7 for f in raw_out)
+    raw_out.clear()
+    await feed(b, codec.build_envelope(codec.KIND_NOMAD_REQ, 3, b"map\t1\t2\t500\t96\t8"), 4)
+    await settle_long()
+    assert not raw_out                                                           # Karte verrät den Standort -> eigener Schalter
+
+    await feed(b, codec.build_envelope(codec.KIND_SET_OPTS, 0, b"rawmap=1"), 5)
+    await settle_long()
+    await feed(b, codec.build_envelope(codec.KIND_NOMAD_REQ, 4, b"map\t1\t2\t500\t96\t8"), 6)
+    await settle_long()
+    assert raw_out and b.peer_raw[PEER] == {"text": True, "map": True}
+
+
+async def test_chat_replies_are_never_sent_raw():
+    b, tr, raw_out = make_raw()
+    await feed(b, codec.build_envelope(codec.KIND_SET_OPTS, 0, b"raw=1;rawmap=1"), 1)
+    await settle_long()
+    await feed(b, codec.build_envelope(codec.KIND_TEXT, 0, b"private Frage"), 2)
+    await settle_long()
+    assert not raw_out                                                           # KI-Antworten sind privat -> immer verschlüsselt

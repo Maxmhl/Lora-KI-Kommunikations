@@ -32,6 +32,9 @@ class MeshSession(ctx: Context, private val scope: CoroutineScope) {
     val lastError = MutableStateFlow<String?>(null)
     private val _texts = MutableSharedFlow<Incoming.TextMsg>(extraBufferCapacity = 64)
     val texts: SharedFlow<Incoming.TextMsg> = _texts
+    private val _raw = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
+    /** Empfangene Rohdatenpakete (Nutzdaten ohne Kopf). */
+    val rawFrames: SharedFlow<ByteArray> = _raw
 
     private val responses = Channel<Incoming>(Channel.UNLIMITED)
     private val cmd = Mutex()
@@ -81,6 +84,7 @@ class MeshSession(ctx: Context, private val scope: CoroutineScope) {
         when (m) {
             is Incoming.MessagesWaiting -> scope.launch { fetchMessages() }
             is Incoming.SendConfirmed -> {}
+            is Incoming.RawData -> _raw.tryEmit(m.payload)
             is Incoming.NewAdvert -> contacts.value = (contacts.value.filter { !it.publicKey.contentEquals(m.contact.publicKey) } + m.contact)
             else -> responses.trySend(m)
         }

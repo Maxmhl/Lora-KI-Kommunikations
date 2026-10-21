@@ -52,6 +52,8 @@ object Companion {
         object MessagesWaiting : Incoming()
         data class SendConfirmed(val ack: ByteArray) : Incoming()
         data class NewAdvert(val contact: Contact) : Incoming()
+        /** Unverschlüsseltes Rohdatenpaket (Push 0x84): [snr] in dB, [rssi] in dBm. */
+        class RawData(val snr: Double, val rssi: Int, val payload: ByteArray) : Incoming()
         data class Other(val code: Int) : Incoming()
     }
 
@@ -114,6 +116,11 @@ object Companion {
                 10 -> Incoming.NoMoreMessages
                 0x82 -> Incoming.SendConfirmed(ByteArray(minOf(4, b.remaining())).also { b.get(it) })
                 0x83 -> Incoming.MessagesWaiting
+                0x84 -> {
+                    val snr = b.get() / 4.0; val rssi = b.get().toInt()
+                    b.get() // reserviert
+                    Incoming.RawData(snr, rssi, ByteArray(b.remaining()).also { b.get(it) })
+                }
                 0x8A -> Incoming.NewAdvert(readContact(b))
                 else -> Incoming.Other(code)
             }
