@@ -17,7 +17,7 @@ crc32(4, BE) | flags(1) | kind(1) | conv(1) | payload
 * `flags`: `0x02` = Nutzlast mit rohem Deflate (ohne Header) komprimiert; `0x04` zusätzlich mit dem eingebauten Wörterbuch
   (`dictionary.txt`, byte-identisch in Bridge und App, per SHA-256 in den Testvektoren geprüft). Der Sender probiert unkomprimiert / Deflate /
   Deflate+Wörterbuch und nimmt das kleinste. Das Wörterbuch spart v. a. bei kurzen deutschen Texten (typisch 20–40 %).
-* `kind`: 1 Text · 2 Bild · 3 Datei · 4 KI-Antwort · 5 Status/Fehler · 6 Kontext zurücksetzen · 7 Modellliste anfordern · 8 Modellliste · 9 Modell wählen
+* `kind`: 1 Text · 2 Bild · 3 Datei · 4 KI-Antwort · 5 Status/Fehler · 6 Kontext zurücksetzen · 7 Modellliste anfordern · 8 Modellliste · 9 Modell wählen · 10 Optionen (`kb=1`) · 11 NOMAD-Anfrage · 12 NOMAD-Antwort
 * `conv`: Unterhaltungs-ID 0–255 (Server hält Verlauf pro Absender + conv)
 * Bild/Datei-Payload: `len(name)(1) name len(mime)(1) mime daten`
 * Anhänge werden vom Server **zwischengespeichert** und mit der nächsten Textnachricht derselben `conv` ausgewertet.
@@ -27,6 +27,12 @@ crc32(4, BE) | flags(1) | kind(1) | conv(1) | payload
 * `9` (App → Server, Nutzlast = Modellname): Modell für diese `conv`; leer = Server-Standard. Die Bridge prüft den Namen
   gegen ihre Liste (sonst Statusmeldung `5`) und speichert die Wahl dauerhaft pro `(Absender, conv)`.
 * Bilder: hat das gewählte Modell kein Bildverständnis, nutzt die Bridge `vision_model` (falls konfiguriert), sonst werden sie mit Hinweis ignoriert.
+
+## NOMAD-Anfragen (Kind 11 → 12)
+`conv` ist hier die Anfragenummer (0–255) und wird in der Antwort wiederholt. Nutzlast der Anfrage: Tab-getrennter Text, z. B.
+`article<TAB>buch<TAB>pfad<TAB>offset<TAB>länge<TAB>text|summary`, `search`, `books`, `mapinfo`, `map<TAB>lat<TAB>lon<TAB>zoom<TAB>größe<TAB>farben`.
+Antwort: erste Zeile `ok<TAB>art…` oder `error<TAB>meldung`, danach Text bzw. Bilddaten (Kartenausschnitt als WebP/PNG). Dasselbe Format nutzt das
+WLAN-Gateway (`POST /lk/nomad`). Details: `bridge/lkbridge/nomad_ops.py`, `core/.../NomadRequest.kt`.
 
 ## Frames (je eine MeshCore-Textnachricht, nur ASCII)
 Zahlen sind 12 Bit in 2 Zeichen des Alphabets `A–Z a–z 0–9 + /` (Index = Wert, 0–4095).

@@ -57,6 +57,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         selectConversation(g.store.conversations.value.first().id)
     }
     fun resetContext() = engine.resetConversation(_conv.value)
+    fun toggleKnowledgeBase() { val c = conversations.value.firstOrNull { it.id == _conv.value } ?: return; engine.setKnowledgeBase(c.id, !c.kb) }
+    /** Neuer Chat mit NOMAD-Wissensdatenbank (für den Weg ohne WLAN). */
+    fun newKnowledgeBaseChat() { newConversation(); engine.setKnowledgeBase(_conv.value, true) }
     fun requestModels() = engine.requestModels(_conv.value)
     fun selectModel(name: String?) = engine.selectModel(_conv.value, name)
 

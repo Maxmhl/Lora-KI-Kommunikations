@@ -27,12 +27,20 @@ data class ChatMessage(
     val ts: Long = System.currentTimeMillis(),
 )
 
-data class Conversation(val id: Int, val title: String, val created: Long = System.currentTimeMillis(), val model: String? = null)
+data class Conversation(val id: Int, val title: String, val created: Long = System.currentTimeMillis(), val model: String? = null, val kb: Boolean = false)
 
 /** Einfacher JSON-Speicher (Unterhaltungen + Nachrichten). */
-class Store(ctx: Context) {
+/**
+ * Einfacher JSON-Speicher (Unterhaltungen + Nachrichten). Im **Privatmodus** ([persist] = false) wird nichts auf das Handy geschrieben:
+ * Nachrichten und Anhänge liegen nur im Arbeitsspeicher und sind nach dem Beenden der App weg.
+ */
+class Store(ctx: Context, persist: Boolean = true) {
     private val file = File(ctx.filesDir, "store.json")
     val attachmentDir = File(ctx.filesDir, "att").apply { mkdirs() }
+    @Volatile var persist: Boolean = persist
+        private set
+    /** Anhänge im Privatmodus: nur im Arbeitsspeicher. */
+    private val blobs = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
 
     /** Nächste Unterhaltungs-ID; wird nie sofort wiederverwendet, damit alte Server-Einstellungen (Modell, Verlauf) nicht in neue Chats geraten. */
     private var nextConvId = 1
@@ -41,7 +49,35 @@ class Store(ctx: Context) {
     val messages: StateFlow<List<ChatMessage>> = _messages
     val conversations: StateFlow<List<Conversation>> = _convs
 
-    init { load() }
+    init { if (persist) load() else wipeFiles().also { _convs.value = listOf(Conversation(0, "Unterhaltung 1")) } }
+
+    private fun wipeFiles() { file.delete(); attachmentDir.deleteRecursively(); attachmentDir.mkdirs() }
+
+    /** Legt einen Anhang ab und gibt die Referenz zurück (Dateipfad bzw. "mem:…"). */
+    fun putBlob(data: ByteArray): String {
+        if (!persist) return "mem:" + UUID.randomUUID().toString().also { blobs[it] = data }
+        return File(attachmentDir, UUID.randomUUID().toString()).also { it.writeBytes(data) }.path
+    }
+
+    fun blob(ref: String): ByteArray = if (ref.startsWith("mem:")) blobs[ref.removePrefix("mem:")] ?: ByteArray(0) else File(ref).readBytes()
+
+    private fun dropBlob(ref: String?) { if (ref == null) return; if (ref.startsWith("mem:")) blobs.remove(ref.removePrefix("mem:")) else File(ref).delete() }
+
+    /** Privatmodus an: alles Gespeicherte löschen; aus: ab jetzt wieder speichern. */
+    @Synchronized fun setPersist(on: Boolean) {
+        persist = on
+        if (on) save() else { wipeFiles() }
+    }
+
+    /** Löscht alle Unterhaltungen, Nachrichten und Anhänge (Dateien und Arbeitsspeicher). */
+    @Synchronized fun wipeAll() {
+        blobs.clear(); wipeFiles()
+        _messages.value = emptyList(); _convs.value = listOf(Conversation(0, "Unterhaltung 1"))
+    }
+
+    @Synchronized fun setKb(conv: Int, kb: Boolean) {
+        _convs.value = _convs.value.map { if (it.id == conv) it.copy(kb = kb) else it }; save()
+    }
 
     @Synchronized private fun load() {
         if (!file.exists()) { _convs.value = listOf(Conversation(0, "Unterhaltung 1")); return }
@@ -49,7 +85,7 @@ class Store(ctx: Context) {
             val o = JSONObject(file.readText())
             nextConvId = o.optInt("next", 1)
             _convs.value = o.getJSONArray("convs").let { a ->
-                (0 until a.length()).map { a.getJSONObject(it).let { c -> Conversation(c.getInt("id"), c.getString("title"), c.getLong("created"), c.optString("model").ifEmpty { null }) } }
+                (0 until a.length()).map { a.getJSONObject(it).let { c -> Conversation(c.getInt("id"), c.getString("title"), c.getLong("created"), c.optString("model").ifEmpty { null }, c.optBoolean("kb", false)) } }
             }
             _messages.value = o.getJSONArray("msgs").let { a ->
                 (0 until a.length()).map { a.getJSONObject(it).toMsg() }
@@ -60,9 +96,10 @@ class Store(ctx: Context) {
     }
 
     @Synchronized private fun save() {
+        if (!persist) return
         val o = JSONObject()
         o.put("next", nextConvId)
-        o.put("convs", JSONArray(_convs.value.map { JSONObject().put("id", it.id).put("title", it.title).put("created", it.created).put("model", it.model) }))
+        o.put("convs", JSONArray(_convs.value.map { JSONObject().put("id", it.id).put("title", it.title).put("created", it.created).put("model", it.model).put("kb", it.kb) }))
         o.put("msgs", JSONArray(_messages.value.map { it.toJson() }))
         val tmp = File(file.parentFile, "store.json.tmp")
         tmp.writeText(o.toString())
@@ -96,7 +133,7 @@ class Store(ctx: Context) {
     }
 
     @Synchronized fun deleteConversation(id: Int) {
-        _messages.value.filter { it.conv == id }.forEach { it.filePath?.let { p -> File(p).delete() } }
+        _messages.value.filter { it.conv == id }.forEach { dropBlob(it.filePath) }
         _messages.value = _messages.value.filter { it.conv != id }
         _convs.value = _convs.value.filter { it.id != id }.ifEmpty { listOf(Conversation(0, "Unterhaltung 1")) }
         save()

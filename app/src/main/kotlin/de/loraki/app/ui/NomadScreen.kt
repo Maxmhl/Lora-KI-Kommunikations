@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -74,21 +75,100 @@ fun formatBytes(b: Long): String = when {
 }
 
 @Composable
-fun NomadScreen(vm: NomadViewModel, chat: de.loraki.app.nomad.NomadChatViewModel) {
-    var tab by rememberSaveable { mutableStateOf(0) }
-    val titles = listOf("Oberfläche", "KI", "Bibliothek", "Karte", "Wiki")
+fun NomadScreen(vm: NomadViewModel, chat: de.loraki.app.nomad.NomadChatViewModel, lookup: de.loraki.app.nomad.NomadLookupViewModel, onStartLoraKb: () -> Unit) {
+    var tab by rememberSaveable { mutableStateOf("web") }
+    val privacy by vm.privacy.collectAsState()
+    // Privatmodus: nichts wird gespeichert -> keine Offline-Bibliothek/-Karte/-Wiki; Inhalte werden gezielt angefragt
+    val tabs = buildList {
+        add("web" to "Oberfläche"); add("ki" to "KI"); add("wiki" to "Wiki"); add("karte" to "Karte")
+        if (!privacy) { add("lib" to "Bibliothek"); add("offmap" to "Offline-Karte"); add("offwiki" to "Offline-Wiki") }
+        add("server" to "Server")
+    }
+    if (tabs.none { it.first == tab }) tab = "web"
     Column(Modifier.fillMaxSize()) {
-        ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
-            titles.forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t, maxLines = 1) }) }
+        ScrollableTabRow(selectedTabIndex = tabs.indexOfFirst { it.first == tab }.coerceAtLeast(0), edgePadding = 0.dp) {
+            tabs.forEach { (id, t) -> Tab(tab == id, { tab = id }, text = { Text(t, maxLines = 1) }) }
         }
+        val mode by lookup.mode.collectAsState()
+        LaunchedEffect(tab) { lookup.refreshMode() }
         when (tab) {
-            0 -> NomadWebTab(vm, onOpenLibrary = { tab = 2 })
-            1 -> NomadChatTab(chat, onOpenLibrary = { tab = 2 })
-            2 -> LibraryTab(vm)
-            3 -> MapTab(vm)
-            4 -> WikiTab(vm)
+            "web" -> if (mode == de.loraki.app.nomad.NomadMode.WLAN) NomadWebTab(vm, onOpenLibrary = { tab = "server" })
+                     else NeedsWlan("Die NOMAD-Oberfläche braucht das lokale WLAN (oder VPN). Ohne WLAN stehen KI, Wiki und Karte als gezielte Anfragen per LoRa zur Verfügung.", onSettings = { tab = "server" })
+            "ki" -> if (mode == de.loraki.app.nomad.NomadMode.WLAN) NomadChatTab(chat, onOpenLibrary = { tab = "server" })
+                    else LoraKiCard(onStartLoraKb)
+            "wiki" -> WikiRequestTab(lookup)
+            "karte" -> MapRequestTab(lookup)
+            "lib" -> LibraryTab(vm)
+            "offmap" -> MapTab(vm)
+            "offwiki" -> WikiTab(vm)
+            "server" -> ServerTab(vm)
         }
     }
+}
+
+@Composable
+private fun NeedsWlan(text: String, onSettings: () -> Unit) {
+    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(text)
+            OutlinedButton(onSettings) { Text("Server-Einstellungen") }
+        }
+    }
+}
+
+@Composable
+private fun LoraKiCard(onStart: () -> Unit) {
+    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Kein lokales WLAN. Die NOMAD-KI mit Wissensdatenbank erreichst du per LoRa im Chat – die Antwort nennt ihre Quellen.")
+            Button(onStart) { Text("Chat mit Wissensdatenbank starten") }
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------------------------
+// Server & Privatsphäre
+// ----------------------------------------------------------------------------------------------
+
+@Composable
+private fun ServerTab(vm: NomadViewModel) {
+    val privacy by vm.privacy.collectAsState()
+    val conn by vm.conn.collectAsState()
+    var url by rememberSaveable { mutableStateOf(vm.settings.nomadUrl) }
+    var token by rememberSaveable { mutableStateOf(vm.settings.nomadToken) }
+    var confirmWipe by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Server (Gateway der Bridge)", style = MaterialTheme.typography.titleSmall)
+                OutlinedTextField(url, { url = it }, label = { Text("Adresse, z. B. http://192.168.1.10:8765") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(token, { token = it }, label = { Text("Token") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                Button({ vm.saveServer(url, token); vm.test() }, enabled = url.isNotBlank() && token.isNotBlank()) { Text("Speichern & testen") }
+                conn?.let { Text(it, fontSize = 13.sp) }
+                Text("Im lokalen WLAN/VPN nutzt die App das Gateway (schnell, volle NOMAD-Oberfläche). Außerhalb läuft alles per LoRa als gezielte Anfrage.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Card {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text("Nichts auf dem Handy speichern", style = MaterialTheme.typography.titleSmall); Text(if (privacy) "Aktiv" else "Aus – Chats und Offline-Inhalte werden gespeichert", fontSize = 12.sp) }
+                    Switch(privacy, { vm.setPrivacy(it) })
+                }
+                Text("Aktiv: Chats, Anhänge, Wikipedia-Artikel und Kartenausschnitte liegen nur im Arbeitsspeicher und sind nach dem Beenden der App weg. " +
+                    "Es gibt keine Offline-Bibliothek; der Browser-Zwischenspeicher der NOMAD-Oberfläche wird gelöscht, Benachrichtigungen zeigen keinen Inhalt. " +
+                    "Gespeichert bleiben nur Verbindungseinstellungen und das Sendezeit-Protokoll (Zeitpunkte, kein Inhalt – das Gesetz verlangt, dass die Sendezeit auch nach einem Neustart eingehalten wird). " +
+                    "Hinweis: Der MeshCore-Node und der Server können Nachrichten ihrerseits speichern.", fontSize = 12.sp)
+                OutlinedButton({ confirmWipe = true }) { Text("Jetzt alles Lokale löschen") }
+            }
+        }
+    }
+    if (confirmWipe) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { confirmWipe = false },
+        title = { Text("Alles Lokale löschen?") },
+        text = { Text("Chats, Anhänge, Offline-Inhalte und Browser-Daten werden vom Handy entfernt. Verbindungseinstellungen bleiben.") },
+        confirmButton = { TextButton({ confirmWipe = false; vm.wipeAll() }) { Text("Löschen") } },
+        dismissButton = { TextButton({ confirmWipe = false }) { Text("Abbrechen") } },
+    )
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -127,7 +207,8 @@ private fun NomadWebTab(vm: NomadViewModel, onOpenLibrary: () -> Unit) {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.allowFileAccess = false
-                settings.cacheMode = WebSettings.LOAD_DEFAULT
+                settings.cacheMode = if (vm.privacy.value) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
+                settings.saveFormData = false
                 CookieManager.getInstance().apply {
                     setAcceptCookie(true); setAcceptThirdPartyCookies(wv, true)
                     setCookie(base, "lk_token=$token; Path=/"); flush()
@@ -158,7 +239,7 @@ private fun NomadWebTab(vm: NomadViewModel, onOpenLibrary: () -> Unit) {
                 loadUrl("$base/", mapOf("Authorization" to "Bearer $token"))
                 web = this
             }
-        }, onRelease = { it.destroy() })
+        }, onRelease = { w -> if (vm.privacy.value) { w.clearCache(true); w.clearHistory(); w.clearFormData(); vm.clearWebData() }; w.destroy() })
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         error?.let { msg ->
             Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -189,10 +270,7 @@ private fun LibraryTab(vm: NomadViewModel) {
     val progress by vm.progress.collectAsState()
     val checking by vm.checking.collectAsState()
     val message by vm.message.collectAsState()
-    val conn by vm.conn.collectAsState()
     val dl by vm.downloadState.collectAsState()
-    var url by rememberSaveable { mutableStateOf(vm.settings.nomadUrl) }
-    var token by rememberSaveable { mutableStateOf(vm.settings.nomadToken) }
     var interval by remember { mutableStateOf(vm.settings.nomadIntervalDays) }
     var wifiOnly by remember { mutableStateOf(vm.settings.nomadWifiOnly) }
     var auto by remember { mutableStateOf(vm.settings.nomadAutoDownload) }
@@ -202,20 +280,6 @@ private fun LibraryTab(vm: NomadViewModel) {
     val byKind = items.groupBy { it.kind }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Server (Gateway der Bridge)", style = MaterialTheme.typography.titleSmall)
-                    OutlinedTextField(url, { url = it }, label = { Text("Adresse, z. B. http://192.168.1.10:8765") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(token, { token = it }, label = { Text("Token") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button({ vm.saveServer(url, token); vm.test() }, enabled = url.isNotBlank() && token.isNotBlank()) { Text("Speichern & testen") }
-                    }
-                    conn?.let { Text(it, fontSize = 13.sp) }
-                    Text("Verbindung nur über WLAN/VPN – nicht über LoRa. Das Token schützt NOMAD, das selbst keine Anmeldung hat.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
         item {
             Card {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
     private val nomadVm: NomadViewModel by viewModels()
     private val nomadChatVm: de.loraki.app.nomad.NomadChatViewModel by viewModels()
+    private val lookupVm: de.loraki.app.nomad.NomadLookupViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,7 +57,7 @@ class MainActivity : ComponentActivity() {
                     }) { inner ->
                         Box(Modifier.padding(inner).consumeWindowInsets(inner)) {
                             if (screen == "chat") ChatScreen(vm, onSettings = { screen = "settings" })
-                            else NomadScreen(nomadVm, nomadChatVm)
+                            else NomadScreen(nomadVm, nomadChatVm, lookupVm, onStartLoraKb = { vm.newKnowledgeBaseChat(); screen = "chat" })
                         }
                     }
                 }

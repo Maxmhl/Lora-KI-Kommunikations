@@ -36,6 +36,10 @@ class NomadViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val conn = MutableStateFlow<String?>(null)
+    val privacy = MutableStateFlow(settings.privacyMode)
+    fun setPrivacy(on: Boolean) { privacy.value = on; g.setPrivacy(on) }
+    fun wipeAll() = g.wipeAllLocal()
+    fun clearWebData() = g.clearWebData()
 
     fun saveServer(url: String, token: String) {
         settings.nomadUrl = url

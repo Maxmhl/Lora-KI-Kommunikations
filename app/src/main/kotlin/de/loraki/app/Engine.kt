@@ -97,6 +97,7 @@ class Engine(
             ackTimeoutS = 120.0,
             maxRetries = 8,
             onProgress = { p ->
+                if (p.msgId == nomadMsgId) loraActivity.value = "Anfrage wird gesendet (${p.sent}/${p.total} Funkpakete) …"
                 store.updateWhere({ it.outgoing && it.msgId == p.msgId && it.status == Status.SENDING }) {
                     it.copy(acked = p.acked, total = p.total)
                 }
@@ -141,10 +142,10 @@ class Engine(
     }
 
     fun submitAttachment(conv: Int, name: String, mime: String, data: ByteArray, isImage: Boolean) {
-        val f = File(store.attachmentDir, UUID.randomUUID().toString()).also { it.writeBytes(data) }
+        val ref = store.putBlob(data)
         val m = ChatMessage(
             conv = conv, outgoing = true, kind = if (isImage) Lkp.KIND_IMAGE else Lkp.KIND_FILE,
-            fileName = name, mime = mime, filePath = f.path, size = data.size, status = Status.QUEUED,
+            fileName = name, mime = mime, filePath = ref, size = data.size, status = Status.QUEUED,
         )
         store.add(m); outbox.trySend(m.id)
     }
@@ -160,6 +161,40 @@ class Engine(
         store.setModel(conv, model)
         val m = ChatMessage(conv = conv, outgoing = true, kind = Lkp.KIND_SET_MODEL, text = model ?: "", status = Status.QUEUED)
         store.add(m); outbox.trySend(m.id)
+    }
+
+    /** NOMAD-Wissensdatenbank für diesen Chat an/aus (wirkt auf dem Server, die Antwort nennt dann ihre Quellen). */
+    fun setKnowledgeBase(conv: Int, on: Boolean) {
+        store.setKb(conv, on)
+        val m = ChatMessage(conv = conv, outgoing = true, kind = Lkp.KIND_SET_OPTS, text = "kb=${if (on) 1 else 0}", status = Status.QUEUED)
+        store.add(m); outbox.trySend(m.id)
+    }
+
+    // ------------------------------------------------------------ Gezielte NOMAD-Anfragen per LoRa (nichts wird gespeichert)
+
+    private val nomadWaiters = java.util.concurrent.ConcurrentHashMap<Int, kotlinx.coroutines.CompletableDeferred<ByteArray>>()
+    private var nomadRid = 0
+    /** Fortschritt der laufenden Anfrage, z. B. "Anfrage wird gesendet (2/3)" – leer, wenn keine läuft. */
+    val loraActivity = MutableStateFlow<String?>(null)
+    @Volatile private var nomadMsgId = -1
+
+    /** Sendet eine Anfrage (Format siehe core/NomadRequest) per LoRa und wartet auf die Antwort des Servers. */
+    suspend fun nomadViaLora(payload: ByteArray, timeoutMs: Long = 25 * 60_000L): ByteArray {
+        if (session.state.value != LinkState.READY) throw java.io.IOException("Kein Node verbunden – bitte den MeshCore-Node verbinden")
+        val snd = sender ?: throw java.io.IOException("Funk noch nicht bereit")
+        val peer = settings.serverKeyHex?.take(12) ?: throw java.io.IOException("Kein Server-Kontakt gewählt (Einstellungen)")
+        val rid = synchronized(this) { nomadRid = (nomadRid + 1) % 256; nomadRid }
+        val waiter = kotlinx.coroutines.CompletableDeferred<ByteArray>()
+        nomadWaiters[rid] = waiter
+        val msgId = newMsgId()
+        nomadMsgId = msgId
+        try {
+            loraActivity.value = "Anfrage wird gesendet …"
+            if (!snd.send(peer, msgId, Lkp.buildEnvelope(Lkp.KIND_NOMAD_REQ, rid, payload))) throw java.io.IOException("Anfrage wurde nicht zugestellt")
+            loraActivity.value = "Server bearbeitet die Anfrage, Antwort kommt per Funk …"
+            return try { kotlinx.coroutines.withTimeout(timeoutMs) { waiter.await() } }
+            catch (e: kotlinx.coroutines.TimeoutCancellationException) { throw java.io.IOException("Keine Antwort vom Server (Zeitüberschreitung)") }
+        } finally { nomadWaiters.remove(rid); loraActivity.value = null }
     }
 
     fun resetConversation(conv: Int) {
@@ -192,9 +227,9 @@ class Engine(
         val snd = sender ?: error("Funk nicht konfiguriert")
         val peer = settings.serverKeyHex?.take(12) ?: error("Kein Server-Kontakt gewählt")
         val payload = when (m0.kind) {
-            Lkp.KIND_TEXT, Lkp.KIND_RESET, Lkp.KIND_SET_MODEL -> m0.text.toByteArray()
+            Lkp.KIND_TEXT, Lkp.KIND_RESET, Lkp.KIND_SET_MODEL, Lkp.KIND_SET_OPTS -> m0.text.toByteArray()
             Lkp.KIND_MODEL_LIST_REQ -> ByteArray(0)
-            else -> Lkp.packFile(m0.fileName ?: "datei", m0.mime ?: "application/octet-stream", File(m0.filePath!!).readBytes())
+            else -> Lkp.packFile(m0.fileName ?: "datei", m0.mime ?: "application/octet-stream", store.blob(m0.filePath!!))
         }
         val env = Lkp.buildEnvelope(m0.kind, m0.conv, payload)
         val resume = m0.msgId >= 0
@@ -235,6 +270,7 @@ class Engine(
         val env = try { Lkp.parseEnvelope(raw) } catch (e: Lkp.ProtocolException) { return }
         when (env.kind) {
             Lkp.KIND_REPLY, Lkp.KIND_STATUS -> addIncoming(env.conv, env.kind, String(env.payload))
+            Lkp.KIND_NOMAD_RESP -> nomadWaiters[env.conv]?.complete(env.payload)
             Lkp.KIND_MODEL_LIST -> {
                 val raw = String(env.payload)
                 settings.modelsRaw = raw
@@ -264,8 +300,8 @@ class Engine(
         val n = NotificationCompat.Builder(ctx, "reply")
             .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setContentTitle("Antwort der KI")
-            .setContentText(text.take(120))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text.take(500)))
+            .setContentText(if (settings.privacyMode) "Neue Antwort" else text.take(120))
+            .apply { if (!settings.privacyMode) setStyle(NotificationCompat.BigTextStyle().bigText(text.take(500))) }
             .setAutoCancel(true)
             .setContentIntent(android.app.PendingIntent.getActivity(ctx, 0,
                 android.content.Intent(ctx, MainActivity::class.java), android.app.PendingIntent.FLAG_IMMUTABLE))

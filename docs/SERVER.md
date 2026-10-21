@@ -15,8 +15,10 @@ Handy (LoRa) ──► Node ─┼─► Heltec V3 (USB) ─► Bridge ─► Ol
 * **Im Intranet** erreichst du NOMAD direkt unter `http://SERVER:8080` – unverändert.
 * **In der App** (Tab „Nomad → Oberfläche“) siehst du *dieselbe* Oberfläche, aber über das **Gateway** mit Token. Das Gateway ist die
   einzige Schnittstelle der App; NOMAD selbst hat keine Anmeldung und sollte nicht ins Internet.
-* **Große Inhalte** (Karten, Wikipedia) lädt die App **einmal** über das Gateway aufs Handy und prüft nur im eingestellten Intervall
-  auf neue Versionen. Education-Plattform (Kolibri) und Videos werden **nicht** angeboten (Filter `exclude`).
+* **Inhalte werden gezielt angefragt, nicht gespeichert** (Standard, „Privatmodus“): Ohne WLAN fragt die App per **LoRa** genau den Artikel
+  bzw. Kartenausschnitt an, den du willst; der Server schickt nur diese kleine Antwort. Im WLAN geht dasselbe schnell über das Gateway.
+  Auf Wunsch (Privatmodus aus) kann die App Karten und Bibliotheken auch **einmal laden** und im Intervall aktualisieren.
+  Education-Plattform (Kolibri) und Videos werden **nicht** angeboten (Filter `exclude`).
 
 ## 1. NOMAD installieren
 Offizielle Anleitung: <https://github.com/Crosstalk-Solutions/project-nomad> (Debian/Ubuntu, Docker):
@@ -50,7 +52,8 @@ In `config.toml`:
 [nomad]
 url = "http://127.0.0.1:8080"
 storage = "/opt/project-nomad/storage"
-knowledge_base = true      # optional: LoRa-Chat nutzt NOMADs Wissensdatenbank (RAG)
+kiwix_url = "http://127.0.0.1:8090"   # NOMADs Bibliothek (Kiwix) – für Artikel-Anfragen per LoRa/WLAN
+knowledge_base = false     # Standard für LoRa-Chats; in der App je Chat umschaltbar
 
 [gateway]
 enabled = true
@@ -88,3 +91,33 @@ Natives Chat-Fenster, das NOMADs eigene KI-Schnittstelle nutzt – nicht die LoR
 * Antworten werden live gestreamt; „Stopp“ bricht die Erzeugung auf dem Server ab.
 * Der Chat über **LoRa** (Tab „KI-Chat“) bleibt davon getrennt und funktioniert ohne WLAN.
 Voraussetzung: In NOMAD ist der **AI Assistant** installiert und mindestens ein Modell geladen.
+
+## NOMAD per LoRa: gezielte Anfragen
+Ohne WLAN läuft NOMAD komplett als **Anfrage/Antwort**. Die App schickt eine winzige Anfrage (ein Funkpaket), der Server holt oder
+rendert das Gewünschte und schickt nur das zurück – nichts wird auf dem Handy gespeichert.
+
+| Anfrage | Antwort | Größe (ca.) |
+|---|---|---|
+| **Wiki: Suche** | bis zu 8 Titel (Titeltreffer + Volltext aus NOMADs Kiwix) | 100–300 Byte |
+| **Wiki: Artikel öffnen** | zuerst die ersten ~1500 Zeichen (Text ohne Tabellen/Fußnoten), „Mehr lesen“ blättert weiter | 0,7–1 KB je Block |
+| **Wiki: Kurzfassung (KI)** | Ollama fasst den Artikel in wenigen Sätzen zusammen | 300–600 Byte |
+| **Karte: Ausschnitt um (Breite, Länge)** | winziges Bild (WebP/PNG) aus den PMTiles: Straßen, Wasser, Grün, Ortsnamen | 1,5 KB (96 px) · 2,8 KB (128 px) · 4,6 KB (160 px) · 11 KB (256 px) |
+| **Karte: N/S/W/O, Zoom ±** | weitere Ausschnitte, bereits gesehene kommen aus dem Arbeitsspeicher | wie oben |
+| **KI-Chat mit Wissensdatenbank** | Antwort + kompakte Quellenzeile („Quellen: …“) | wenige 100 Byte |
+
+Die App zeigt **vor** jeder Anfrage die geschätzte Wartezeit (Sendepausen!). Bei 10 % Duty-Cycle sind das grob 2–3 Minuten je KB.
+Eine Karte mit 160 px dauert also etwa 10–15 Minuten, ein Artikelanfang 2–3 Minuten. Im WLAN kommt dieselbe Antwort sofort.
+
+**Grenzen:** Die Karte ist ein vereinfachtes Bild (kein Vektor-Zoom, kein Routing, keine Straßennamen). Die Volltextsuche nutzt Kiwix, soweit
+die ZIM-Datei einen Suchindex enthält. Bilder aus Artikeln werden nicht übertragen.
+
+Server-Voraussetzungen: `pip install -r requirements.txt` (u. a. Pillow, pmtiles, mapbox-vector-tile), laufendes Kiwix (NOMAD „Information Library“,
+Port 8090) und die Karten-Regionen im NOMAD-Speicher.
+
+## Privatmodus („Nichts auf dem Handy speichern“)
+Standardmäßig an (Tab *Nomad → Server*). Dann liegen Chats, Anhänge, Wikipedia-Artikel und Kartenausschnitte **nur im Arbeitsspeicher** und sind
+nach dem Beenden der App weg; es gibt keine Offline-Bibliothek; der Browser-Zwischenspeicher der NOMAD-Oberfläche wird gelöscht; Benachrichtigungen
+zeigen keinen Inhalt. Beim Einschalten werden bereits gespeicherte Chats und Offline-Inhalte gelöscht.
+Gespeichert bleiben **nur Verbindungseinstellungen** und das **Sendezeit-Protokoll** (Zeitpunkte und Dauer, kein Inhalt) – es sorgt dafür, dass die
+gesetzlichen Sendepausen auch nach einem App-Neustart eingehalten werden.
+Nicht in der Hand der App: der MeshCore-Node und der Server können Nachrichten ihrerseits speichern.

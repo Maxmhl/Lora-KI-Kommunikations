@@ -198,5 +198,12 @@ class NomadRepo(private val ctx: Context, private val scope: CoroutineScope, pri
         setWanted(item.series, true)
     }
 
+    /** Löscht alle Offline-Inhalte, die Auswahl und das Manifest vom Handy. */
+    fun wipe() {
+        root.deleteRecursively(); root.mkdirs()
+        _installed.value = emptyList(); _wanted.value = emptySet(); _manifest.value = null; _progress.value = emptyMap()
+        settings.nomadInstalledJson = null; settings.nomadWanted = emptySet(); settings.nomadManifestJson = null
+    }
+
     fun launch(block: suspend () -> Unit) = scope.launch { try { block() } catch (e: IOException) { message.value = e.message } }
 }

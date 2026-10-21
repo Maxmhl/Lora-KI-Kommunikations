@@ -120,7 +120,7 @@ fun ChatScreen(vm: MainViewModel, onSettings: () -> Unit) {
                     title = {
                         Column {
                             Text(convs.firstOrNull { it.id == current }?.title ?: "LoRa-KI", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("Modell: ${currentModel ?: "Server-Standard"} ▾", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary,
+                            Text("Modell: ${currentModel ?: "Server-Standard"}" + (if (convs.firstOrNull { it.id == current }?.kb == true) " · Wissensbasis" else "") + " ▾", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.clickable { modelDialog = true })
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(8.dp).background(
@@ -136,6 +136,7 @@ fun ChatScreen(vm: MainViewModel, onSettings: () -> Unit) {
                             IconButton({ menu = true }) { Icon(Icons.Default.MoreVert, "Mehr") }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem({ Text("KI-Modell wählen …") }, { menu = false; modelDialog = true })
+                                DropdownMenuItem({ Text("NOMAD-Wissensdatenbank: " + if (convs.firstOrNull { it.id == current }?.kb == true) "an ✓" else "aus") }, { menu = false; vm.toggleKnowledgeBase() })
                                 DropdownMenuItem({ Text("Kontext der KI zurücksetzen") }, { menu = false; vm.resetContext() })
                                 DropdownMenuItem({ Text("Unterhaltung löschen") }, { menu = false; confirmDelete = true })
                             }
@@ -240,6 +241,7 @@ private fun Bubble(m: ChatMessage, vm: MainViewModel) {
                     Lkp.KIND_IMAGE, Lkp.KIND_FILE -> Text((if (m.kind == Lkp.KIND_IMAGE) "🖼 " else "📎 ") + (m.fileName ?: "Datei") + "  (${"%.1f".format(m.size / 1024.0)} KB)")
                     Lkp.KIND_RESET -> Text("↺ Kontext zurückgesetzt", fontSize = 13.sp)
                     Lkp.KIND_SET_MODEL -> Text("Modell: " + m.text.ifEmpty { "Server-Standard" }, fontSize = 13.sp)
+                    Lkp.KIND_SET_OPTS -> Text("NOMAD-Wissensdatenbank: " + if (m.text.contains("kb=1")) "an" else "aus", fontSize = 13.sp)
                     Lkp.KIND_MODEL_LIST_REQ -> Text(m.text, fontSize = 13.sp)
                     else -> Text(if (mine) androidx.compose.ui.text.AnnotatedString(m.text) else markdown(m.text))
                 }

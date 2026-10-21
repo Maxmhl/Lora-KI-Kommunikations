@@ -18,11 +18,11 @@ Bilder und Dateien. Große Objekte werden fragmentiert und unter Einhaltung des 
 | `docs/` | Rechtlicher Rahmen, Server-Einrichtung (`SERVER.md`), Lizenzen (`LIZENZEN.md`) |
 | `deploy/` | systemd-Dienst für Bridge + Gateway |
 
-## Nomad-Tab (Offline-Wissen & volle NOMAD-Oberfläche)
-Auf dem Server läuft **vollständiges Project NOMAD** (im Intranet direkt unter `:8080`). Die App bindet es über **eine abgesicherte
-Schnittstelle (Gateway der Bridge)** ein: Tab *Nomad → Oberfläche* zeigt dieselbe Oberfläche wie der Browser. Große Inhalte –
-**Offline-Karten** und **Wikipedia & Co.** – lädt die App **einmal** aufs Handy und aktualisiert sie nur im einstellbaren
-Intervall (täglich/wöchentlich/monatlich/nie, nur WLAN, automatisch oder nur Benachrichtigung). Education-Plattform und Videos werden nicht
+## Nomad-Tab (NOMAD per LoRa und im WLAN)
+Auf dem Server läuft **vollständiges Project NOMAD** (im Intranet direkt unter `:8080`). Im **lokalen WLAN** zeigt die App über **eine abgesicherte Schnittstelle (Gateway der Bridge)** dieselbe Oberfläche wie der Browser.
+**Ohne WLAN läuft NOMAD komplett per LoRa** als gezielte Anfrage: du fragst *einen Wikipedia-Artikel* oder *einen Kartenausschnitt* an und der Server
+schickt nur dieses kleine Ergebnis (Karte als 1,5–5-KB-Bild, Artikel in Blöcken, optional KI-Kurzfassung). Standardmäßig wird **nichts auf dem Handy
+gespeichert** (Privatmodus). Optional (Privatmodus aus) lassen sich Karten und Bibliotheken auch einmal laden und im Intervall aktualisieren. Education-Plattform und Videos werden nicht
 angeboten. Zusätzlich gibt es im Nomad-Tab einen **nativen Chat mit der NOMAD-KI** (Wissensdatenbank, Quellen, gleiche Sitzungen wie in der Weboberfläche). Einrichtung: [docs/SERVER.md](docs/SERVER.md).
 
 ## Einrichtung

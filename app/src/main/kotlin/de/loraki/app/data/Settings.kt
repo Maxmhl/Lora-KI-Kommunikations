@@ -40,5 +40,7 @@ class Settings(ctx: Context) {
     var nomadWanted: Set<String> get() = p.getStringSet("nomadWanted", emptySet()) ?: emptySet(); set(v) = p.edit { putStringSet("nomadWanted", v) }
     var nomadChatModel: String? get() = p.getString("nomadChatModel", null); set(v) = p.edit { putString("nomadChatModel", v) }
     var nomadChatSession: String? get() = p.getString("nomadChatSession", null); set(v) = p.edit { putString("nomadChatSession", v) }
+    /** Privatmodus (Standard): nichts von Chats, Anhängen, Karten oder Bibliotheken wird auf dem Handy gespeichert. */
+    var privacyMode: Boolean get() = p.getBoolean("privacy", true); set(v) = p.edit { putBoolean("privacy", v) }
     var wantConnected: Boolean get() = p.getBoolean("want", false); set(v) = p.edit { putBoolean("want", v) }
 }
